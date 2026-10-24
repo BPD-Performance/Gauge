@@ -102,6 +102,9 @@ pre{background:#0F1B30;color:#D6E2F5;padding:10px;border-radius:8px;font-size:.8
   <button class="btn ghost" id="forgetBtn" type="button">Disconnect</button>
   <button class="btn warn" id="defaultsBtn" type="button">Reset gauge settings</button>
  </div>
+ <h2>Bench test</h2>
+ <p class="lead">Makes the gauge generate realistic fake Haltech data (a 24 second loop: idle, a full-throttle run through 1st to 4th with boost, then idle). The gauge and this app behave as if the car is running. It switches off by itself on restart or if real ECU data appears, and keypad frames are never sent to the car while it runs. Boost + and − on the Keypad tab move the simulated target boost.</p>
+ <button class="btn" id="simBtn" type="button">Start simulator</button>
  <h2>Command console</h2>
  <p class="lead">Send a raw command to the gauge, e.g. {"cmd":"info"}</p>
  <div class="grid" style="grid-template-columns:1fr auto"><input id="cmdIn" value='{"cmd":"info"}'><button class="btn" id="cmdSend" type="button">Send</button></div>

@@ -11,7 +11,7 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 let dev = null, rxC = null, connected = false, userDisconnect = false, retryMs = 2000;
 let S = null;                                   // gauge settings
 const frames = {};                              // latest CAN data by ID: {data, t}
-const gaugeStatus = { kmh: null, gear: null, wifi: 0, held: 0, t: 0 };
+const gaugeStatus = { kmh: null, gear: null, wifi: 0, held: 0, sim: 0, t: 0 };
 
 // ---------------- Command channel ----------------
 let lineBuf = "", waiters = [], chain = Promise.resolve();
@@ -70,6 +70,7 @@ function onLive(e) {
     gaugeStatus.gear = g === 0x7F ? null : g;
     gaugeStatus.wifi = v.getUint8(7);
     gaugeStatus.held = v.getUint16(8, true);
+    gaugeStatus.sim = n >= 11 ? v.getUint8(10) : 0;
     gaugeStatus.t = now;
   }
 }
@@ -254,6 +255,8 @@ function refreshLive() {
   if (sp) chips.push(`<span class="chip">${sp[0]} ${sp[1]}</span>`);
   if (gr) chips.push(`<span class="chip">Gear ${gr[0]}</span>`);
   if (gaugeStatus.wifi) chips.push(`<span class="chip">Gauge WiFi on</span>`);
+  if (gaugeStatus.sim) chips.push(`<span class="chip alarm">SIMULATOR (fake data)</span>`);
+  $("simBtn").textContent = gaugeStatus.sim ? "Stop simulator" : "Start simulator";
   $("statusChips").innerHTML = chips.join("");
   refreshKeypad();
 }
@@ -389,6 +392,9 @@ async function saveSettings() {
 }
 
 // ---------------- Device tab ----------------
+$("simBtn").onclick = async () => {
+  try { const r = await cmd({ cmd: "sim", on: gaugeStatus.sim ? 0 : 1 }); if (!r.ok) alert(r.err); } catch (e) { alert(e.message); }
+};
 $("cmdSend").onclick = () => cmd($("cmdIn").value.trim()).catch(e => logConsole("!", e.message));
 $("forgetBtn").onclick = () => { if (connected) { userDisconnect = true; dev.gatt.disconnect(); } };
 $("defaultsBtn").onclick = async () => {
