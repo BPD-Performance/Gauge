@@ -11,7 +11,8 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 let dev = null, rxC = null, connected = false, userDisconnect = false, retryMs = 2000;
 let S = null;                                   // gauge settings
 const frames = {};                              // latest CAN data by ID: {data, t}
-const gaugeStatus = { kmh: null, gear: null, wifi: 0, held: 0, sim: 0, t: 0 };
+const gaugeStatus = { kmh: null, gear: null, wifi: 0, held: 0, sim: 0, warn: 0, dyno: 0, t: 0 };
+let diagWarns = [];                             // active warnings from the gauge (Diag tab and gauge screen)
 
 // ---------------- Command channel ----------------
 let lineBuf = "", waiters = [], chain = Promise.resolve();
@@ -71,14 +72,21 @@ function onLive(e) {
     gaugeStatus.wifi = v.getUint8(7);
     gaugeStatus.held = v.getUint16(8, true);
     gaugeStatus.sim = n >= 11 ? v.getUint8(10) : 0;
+    gaugeStatus.warn = n >= 13 ? v.getUint16(11, true) : 0;
+    gaugeStatus.dyno = n >= 14 ? v.getUint8(13) : 0;
     gaugeStatus.t = now;
   }
 }
 
 // ---------------- Connection ----------------
+// Connect button: outlined = not connected, blinking dashed = connecting, solid amber = connected
 function setState(text, isConnected) {
+  const busy = !isConnected && text.endsWith("…");
   $("state").textContent = text;
-  $("connectBtn").textContent = isConnected ? "Disconnect" : "Connect";
+  const b = $("connectBtn");
+  b.textContent = isConnected ? "Connected" : busy ? "Connecting" : "Connect";
+  b.classList.toggle("connected", isConnected);
+  b.classList.toggle("connecting", busy);
 }
 
 async function openLink() {
@@ -96,6 +104,7 @@ async function openLink() {
   retryMs = 2000;
   lineBuf = ""; waiters = [];
   setState("Connected", true);
+  lastWarnMask = -1;
 
   const info = await cmd({ cmd: "info" });
   $("devInfo").innerHTML = `<p>${info.name || "BPD Gauge"}</p>Firmware ${info.fw}, protocol ${info.proto}`;
@@ -111,6 +120,7 @@ function onDisconnected() {
   connected = false;
   rxC = null;
   waiters.forEach(w => clearTimeout(w.timer)); waiters = [];
+  diagWarns = []; renderDiag();
   setState(userDisconnect ? "Not connected" : "Reconnecting…", false);
   if (!userDisconnect) setTimeout(tryReconnect, retryMs);
 }
@@ -122,7 +132,7 @@ async function tryReconnect() {
 }
 
 async function connectClicked() {
-  if (connected) { userDisconnect = true; dev.gatt.disconnect(); return; }
+  if (connected) { if (confirm("Disconnect from the gauge?")) { userDisconnect = true; dev.gatt.disconnect(); } return; }
   if (!navigator.bluetooth) { alert("This browser has no Bluetooth support. Use Chrome on Android or Windows."); return; }
   userDisconnect = false;
   try {
@@ -256,6 +266,8 @@ function refreshLive() {
   if (gr) chips.push(`<span class="chip">Gear ${gr[0]}</span>`);
   if (gaugeStatus.wifi) chips.push(`<span class="chip">Gauge WiFi on</span>`);
   if (gaugeStatus.sim) chips.push(`<span class="chip alarm">SIMULATOR (fake data)</span>`);
+  if (gaugeStatus.dyno) chips.push(`<span class="chip pink">DYNO MODE</span>`);
+  if (gaugeStatus.warn) chips.push(`<span class="chip alarm">WARNING</span>`);
   $("simBtn").textContent = gaugeStatus.sim ? "Stop simulator" : "Start simulator";
   $("statusChips").innerHTML = chips.join("");
   refreshKeypad();
@@ -263,7 +275,7 @@ function refreshLive() {
 
 // ---------------- Keypad tab ----------------
 let keyLabels = JSON.parse(localStorage.getItem("keyLabels") || "null") ||
-  Object.fromEntries(Array.from({ length: 15 }, (_, i) => [i + 1, i === 0 ? "Boost +" : i === 1 ? "Boost −" : `Button ${i + 1}`]));
+  Object.fromEntries(Array.from({ length: 15 }, (_, i) => [i + 1, i === 0 ? "Boost +" : i === 1 ? "Boost −" : i === 2 ? "Rot idle" : `Button ${i + 1}`]));
 let renameMode = false;
 
 function buildKeypad() {
@@ -307,7 +319,7 @@ function refreshKeypad() {
 }
 
 // ---------------- Settings tab ----------------
-const PAGES = ["Boost", "Oil pressure", "AFR", "RPM and speed", "Coolant"];
+const PAGES = ["Boost", "Oil", "AFR", "RPM and speed", "Coolant", "Fuel pressure", "Intake air temp", "Monitor", "CAN keypad", "Alerts"];
 const pTo = (k, u) => u == 0 ? k : u == 1 ? k / 100 : k / 6.894757, pFrom = (v, u) => u == 0 ? v : u == 1 ? v * 100 : v * 6.894757;
 const tTo = (c, u) => u == 1 ? c * 9 / 5 + 32 : c, tFrom = (v, u) => u == 1 ? (v - 32) * 5 / 9 : v;
 const WARN = [
@@ -316,16 +328,21 @@ const WARN = [
   { key: "w_lean", title: "Lean on boost", f: [["w_lean", "Leaner than (lambda)", "l"], ["w_lean_bst", "Only above boost", "p"]] },
   { key: "w_bst", title: "Overboost", f: [["w_bst", "Above", "p"]] },
   { key: "w_ot", title: "Oil hot", f: [["w_ot", "Above", "t"]] },
-  { key: "w_shift", title: "Shift light", f: [["w_shift", "At (rpm)", "r"]] }];
+  { key: "w_shift", title: "Shift light and redline", f: [["w_shift", "At (rpm)", "r"]] },
+  { key: "w_cp", title: "Coolant pressure high", f: [["w_cp", "Above", "p"]] },
+  { key: "w_fd", title: "Fuel pressure low (fuel minus boost)", f: [["w_fd", "Below", "p"]] },
+  { key: "w_iat", title: "Intake air hot", f: [["w_iat", "Above", "t"]] },
+  { key: "w_bat", title: "Battery low (engine running)", f: [["w_bat", "Below (V)", "v"]] },
+  { key: "w_duty", title: "Injector duty high", f: [["w_duty", "Above (%)", "r"]] }];
 const uLbl = k => k == "p" ? PU[S.pu] : k == "t" ? TU[S.tu] : "";
-const shown = (v, k) => k == "p" ? pTo(v, S.pu).toFixed(S.pu == 1 ? 2 : S.pu == 2 ? 1 : 0) : k == "t" ? tTo(v, S.tu).toFixed(0) : k == "l" ? (+v).toFixed(2) : Math.round(v);
+const shown = (v, k) => k == "p" ? pTo(v, S.pu).toFixed(S.pu == 1 ? 2 : S.pu == 2 ? 1 : 0) : k == "t" ? tTo(v, S.tu).toFixed(0) : k == "l" ? (+v).toFixed(2) : k == "v" ? (+v).toFixed(1) : Math.round(v);
 const metric = (v, k) => { v = parseFloat(v); return k == "p" ? pFrom(v, S.pu) : k == "t" ? tFrom(v, S.tu) : v; };
 const fld = (id, label, attrs = "") => `<div><label for="${id}">${label}</label><input id="${id}" inputmode="decimal" ${attrs}></div>`;
 const sel = (id, label, opts) => `<div><label for="${id}">${label}</label><select id="${id}">${opts.map((o, i) => `<option value="${Array.isArray(o) ? o[0] : i}">${Array.isArray(o) ? o[1] : o}</option>`).join("")}</select></div>`;
 
 async function loadSettings() {
   const r = await cmd({ cmd: "get" });
-  if (r.ok) { S = r.settings; renderSettings(); }
+  if (r.ok) { S = r.settings; renderSettings(); showPage(0); }
 }
 
 function renderSettings() {
@@ -343,11 +360,12 @@ function renderSettings() {
   <h2>Gauge pages</h2><div class="list" id="pagesBox"></div>
   <h2>Warnings</h2><div id="warnBox"></div>
   <h2>Screen</h2>
-  <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}</div>
+  <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
+   ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
   <div class="actions"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>`;
 
-  ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears"]
-    .forEach(k => $(k).value = S[k]);
+  ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
+    .forEach(k => { if (S[k] !== undefined) $(k).value = S[k]; });
   const gears = () => { $("gearBox").innerHTML = Array.from({ length: +$("numGears").value }, (_, i) => fld("g" + (i + 1), "Gear " + (i + 1))).join("");
     for (let i = 1; i <= +$("numGears").value; i++) $("g" + i).value = S["g" + i]; };
   gears();
@@ -359,6 +377,9 @@ function renderSettings() {
 }
 
 function renderPages() {
+  if (S.order.length < PAGES.length) {               // older gauge firmware: only its own pages
+    S.order = S.order.filter(p => p < PAGES.length);
+  }
   $("pagesBox").innerHTML = S.order.map((p, i) => `<div class="pg"><input type="checkbox" aria-label="Show ${PAGES[p]}" data-on="${p}" ${S.on[p] ? "checked" : ""} style="width:24px;height:24px;min-height:0">
     <span>${PAGES[p]}</span><button class="mv" type="button" data-up="${i}" ${i == 0 ? "disabled" : ""} aria-label="Move ${PAGES[p]} earlier">↑</button>
     <button class="mv" type="button" data-dn="${i}" ${i == S.order.length - 1 ? "disabled" : ""} aria-label="Move ${PAGES[p]} later">↓</button></div>`).join("");
@@ -376,7 +397,7 @@ function readWarns() { WARN.forEach(w => { S[w.key + "_on"] = $(w.key + "_on").c
 
 function readForm() {
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "stoich", "bright"].forEach(k => S[k] = parseFloat($(k).value));
-  ["numGears", "spdSrc", "gearSrc", "lam", "flex", "tachmax"].forEach(k => S[k] = +$(k).value);
+  ["numGears", "spdSrc", "gearSrc", "lam", "flex", "tachmax", "acycle"].forEach(k => S[k] = +$(k).value);
   for (let i = 1; i <= 6; i++) if ($("g" + i)) S["g" + i] = parseFloat($("g" + i).value);
   readWarns();
 }
@@ -402,10 +423,110 @@ $("defaultsBtn").onclick = async () => {
   try { const r = await cmd({ cmd: "defaults" }); if (r.ok) setTimeout(() => loadSettings(), 1500); else alert(r.err); } catch (e) { alert(e.message); }
 };
 
+// ---------------- Gauge screen tab ----------------
+let gaugeTab = true, pageIdx = 0;
+const gaugePages = () => {
+  if (!S || !S.order) return PAGES.map((_, i) => i);
+  const list = S.order.filter(p => p < PAGES.length && S.on[p]);
+  return list.length ? list : [0];
+};
+function showPage(delta) {
+  const list = gaugePages();
+  pageIdx = ((pageIdx + delta) % list.length + list.length) % list.length;
+  $("pgName").textContent = PAGES[list[pageIdx]];
+}
+GaugeView.init($("face"));
+$("pgPrev").onclick = () => showPage(-1);
+$("pgNext").onclick = () => showPage(1);
+(() => {                                        // swipe, tap and 2 s hold on the gauge face
+  const cv = $("face");
+  let x0 = 0, y0 = 0, t0 = 0, holdTimer = null, held = false;
+  const pt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * 480 / r.width, (e.clientY - r.top) * 480 / r.height]; };
+  cv.onpointerdown = e => {
+    [x0, y0] = pt(e); t0 = performance.now(); held = false;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => { held = true; GaugeView.resetPeak(gaugePages()[pageIdx]); }, 2000);
+  };
+  cv.onpointerup = e => {
+    clearTimeout(holdTimer);
+    if (held) return;
+    const [x, y] = pt(e), dx = x - x0, dy = y - y0;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { showPage(dx < 0 ? 1 : -1); return; }
+    if (Math.abs(dx) < 15 && Math.abs(dy) < 15) GaugeView.tap(gaugePages()[pageIdx], x, y);
+  };
+  cv.onpointerleave = cv.onpointercancel = () => clearTimeout(holdTimer);
+})();
+let lastFace = 0;
+function faceLoop(t) {
+  if (gaugeTab && !document.hidden && t - lastFace > 45) { lastFace = t; GaugeView.render(gaugePages()[pageIdx]); }
+  requestAnimationFrame(faceLoop);
+}
+
+// ---------------- Diag tab ----------------
+const LOW_WARN = ["OIL P", "FUEL", "BATT"];      // for these, the worst value is the lowest
+let warnHist = JSON.parse(localStorage.getItem("warnHist") || "{}");
+
+function recordHistory(list) {
+  const now = Date.now();
+  list.forEach(w => {
+    const v = parseFloat(w.val), h = warnHist[w.name];
+    if (!h) { warnHist[w.name] = { unit: w.unit, worst: w.val, first: now, last: now, count: 1, active: true }; return; }
+    if (!h.active) { h.count++; h.active = true; }
+    h.last = now; h.unit = w.unit;
+    const worse = LOW_WARN.includes(w.name) ? v < parseFloat(h.worst) : v > parseFloat(h.worst);
+    if (!isNaN(v) && worse) h.worst = w.val;
+  });
+  for (const k in warnHist) if (!list.find(w => w.name === k)) warnHist[k].active = false;
+  localStorage.setItem("warnHist", JSON.stringify(warnHist));
+}
+
+function renderDiag() {
+  $("warnList").innerHTML = !connected ? `<div class="empty">Connect to the gauge to see warnings.</div>`
+    : diagWarns.length ? diagWarns.map(w => `<div class="wl"><span>${w.name}${w.ack ? " (dismissed)" : ""}</span><span class="v">${w.val} ${w.unit}</span></div>`).join("")
+    : `<div class="empty">No active warnings.</div>`;
+  const keys = Object.keys(warnHist).sort((a, b) => warnHist[b].last - warnHist[a].last);
+  const when = t => new Date(t).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  $("histList").innerHTML = keys.length ? keys.map(k => { const h = warnHist[k];
+    return `<div class="wl"><span>${k}</span><span class="v">${h.worst} ${h.unit}</span><small>${h.count} time${h.count > 1 ? "s" : ""}, last ${when(h.last)}</small></div>`; }).join("")
+    : `<div class="empty">No warnings recorded.</div>`;
+}
+
+let warnPollBusy = false, lastWarnMask = -1;
+async function pollWarns() {
+  if (!connected || warnPollBusy) return;
+  if (gaugeStatus.warn === 0 && lastWarnMask === 0) return;   // nothing active and nothing changed
+  warnPollBusy = true;
+  try {
+    const r = await cmd({ cmd: "warns" });
+    if (r.ok && Array.isArray(r.warns)) {
+      diagWarns = r.warns.map(w => ({ ...w, unit: String(w.unit).replace("*", "°") }));
+      recordHistory(diagWarns);
+      lastWarnMask = gaugeStatus.warn;
+      renderDiag();
+    }
+  } catch { /* older firmware or busy: try again next time */ }
+  warnPollBusy = false;
+}
+$("ackBtn").onclick = () => cmd({ cmd: "ack" }).then(() => setTimeout(pollWarns, 300)).catch(e => alert(e.message));
+$("histClear").onclick = () => { if (confirm("Clear the warning history on this phone?")) { warnHist = {}; localStorage.removeItem("warnHist"); renderDiag(); } };
+
+// ---------------- Dyno mode ----------------
+$("dynoBtn").onclick = async () => {
+  try { await cmd({ cmd: "dyno", on: gaugeStatus.dyno ? 0 : 1 }); } catch (e) { alert(e.message); }
+};
+function refreshDyno() {
+  const b = $("dynoBtn");
+  b.textContent = gaugeStatus.dyno ? "Turn off" : "Turn on";
+  b.classList.toggle("ghost", !gaugeStatus.dyno);
+  b.classList.toggle("pink", !!gaugeStatus.dyno);
+}
+
 // ---------------- Tabs and start-up ----------------
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("main section").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
+  gaugeTab = b.dataset.tab === "gauge";
+  if (b.dataset.tab === "diag") renderDiag();
 });
 $("connectBtn").onclick = connectClicked;
 $("rate").onchange = () => subscribe().catch(() => {});
@@ -414,5 +535,9 @@ buildPinned();
 buildChannelList();
 buildKeypad();
 setInterval(refreshLive, 100);                  // screen updates 10 times a second
+setInterval(() => { refreshDyno(); if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) pollWarns(); }, 1000);
+renderDiag();
+showPage(0);
+requestAnimationFrame(faceLoop);
 autoConnect();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
