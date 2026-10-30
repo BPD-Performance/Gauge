@@ -11,7 +11,7 @@ const enc = new TextEncoder(), dec = new TextDecoder();
 let dev = null, rxC = null, connected = false, userDisconnect = false, retryMs = 2000;
 let S = null;                                   // gauge settings
 const frames = {};                              // latest CAN data by ID: {data, t}
-const gaugeStatus = { kmh: null, gear: null, wifi: 0, held: 0, sim: 0, warn: 0, dyno: 0, t: 0 };
+const gaugeStatus = { kmh: null, gear: null, held: 0, sim: 0, warn: 0, dyno: 0, log: 0, t: 0 };
 let diagWarns = [];                             // active warnings from the gauge (Diag tab and gauge screen)
 
 // ---------------- Command channel ----------------
@@ -59,22 +59,28 @@ function cmd(obj) {
 function onLive(e) {
   const v = e.target.value, n = v.byteLength, now = performance.now();
   const type = v.getUint8(0);
+  const replay = Logs.replaying;                 // log playing on the gauge faces: ignore live engine data
   if (type === 0x01) {
+    if (replay) return;
     for (let o = 2; o + 11 <= n; o += 11) {
       const id = v.getUint16(o, true);
       const data = new Uint8Array(v.buffer, v.byteOffset + o + 3, 8).slice();
       frames[id] = { data, t: now };
     }
   } else if (type === 0x02 && n >= 10) {
-    const s10 = v.getUint16(2, true), g = v.getInt8(4);
-    gaugeStatus.kmh = s10 === 0xFFFF ? null : s10 / 10;
-    gaugeStatus.gear = g === 0x7F ? null : g;
-    gaugeStatus.wifi = v.getUint8(7);
+    if (!replay) {
+      const s10 = v.getUint16(2, true), g = v.getInt8(4);
+      gaugeStatus.kmh = s10 === 0xFFFF ? null : s10 / 10;
+      gaugeStatus.gear = g === 0x7F ? null : g;
+      gaugeStatus.warn = n >= 13 ? v.getUint16(11, true) : 0;
+      gaugeStatus.t = now;
+    }
     gaugeStatus.held = v.getUint16(8, true);
     gaugeStatus.sim = n >= 11 ? v.getUint8(10) : 0;
-    gaugeStatus.warn = n >= 13 ? v.getUint16(11, true) : 0;
     gaugeStatus.dyno = n >= 14 ? v.getUint8(13) : 0;
-    gaugeStatus.t = now;
+    gaugeStatus.log = n >= 15 ? v.getUint8(14) : 0;
+  } else if (type === 0x03) {
+    Logs.onChunk(v);                             // log file download
   }
 }
 
@@ -107,13 +113,18 @@ async function openLink() {
   lastWarnMask = -1;
 
   const info = await cmd({ cmd: "info" });
+  await cmd({ cmd: "time", t: Math.floor(Date.now() / 1000) }).catch(() => {});   // dates the logs
   $("devInfo").innerHTML = `<p>${info.name || "BPD Gauge"}</p>Firmware ${info.fw}, protocol ${info.proto}`;
   await subscribe();
   await loadSettings();
 }
 
+// Only ask for what's on screen: every CAN ID on the Live tab, otherwise just the IDs the
+// gauge faces, Diag and Keypad tabs use. Fewer IDs leave room for faster update rates.
+const FACE_IDS = [0x360, 0x361, 0x362, 0x368, 0x372, 0x3E0, 0x3E1, 0x3E4, 0x3E9];
+let liveTab = false;
 async function subscribe() {
-  if (connected) await cmd({ cmd: "sub", ids: [], hz: +$("rate").value });
+  if (connected) await cmd({ cmd: "sub", ids: liveTab ? [] : FACE_IDS, hz: +$("rate").value });
 }
 
 function onDisconnected() {
@@ -264,7 +275,7 @@ function refreshLive() {
   const sp = channelValue("d_speed"), gr = channelValue("d_gear");
   if (sp) chips.push(`<span class="chip">${sp[0]} ${sp[1]}</span>`);
   if (gr) chips.push(`<span class="chip">Gear ${gr[0]}</span>`);
-  if (gaugeStatus.wifi) chips.push(`<span class="chip">Gauge WiFi on</span>`);
+  if (gaugeStatus.log & 2) chips.push(`<span class="chip alarm">REC</span>`);
   if (gaugeStatus.sim) chips.push(`<span class="chip alarm">SIMULATOR (fake data)</span>`);
   if (gaugeStatus.dyno) chips.push(`<span class="chip pink">DYNO MODE</span>`);
   if (gaugeStatus.warn) chips.push(`<span class="chip alarm">WARNING</span>`);
@@ -342,7 +353,9 @@ const sel = (id, label, opts) => `<div><label for="${id}">${label}</label><selec
 
 async function loadSettings() {
   const r = await cmd({ cmd: "get" });
-  if (r.ok) { S = r.settings; renderSettings(); showPage(0); }
+  if (r.ok) { S = r.settings; renderSettings(); buildFaces(); }
+  await Logs.refresh().catch(() => {});
+  if ($("logSettings")) Logs.renderSettings($("logSettings"));
 }
 
 function renderSettings() {
@@ -362,7 +375,8 @@ function renderSettings() {
   <h2>Screen</h2>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
-  <div class="actions"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>`;
+  <div class="actions"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
+  <h2>Logging</h2><div id="logSettings"></div>`;
 
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
     .forEach(k => { if (S[k] !== undefined) $(k).value = S[k]; });
@@ -424,41 +438,136 @@ $("defaultsBtn").onclick = async () => {
 };
 
 // ---------------- Gauge screen tab ----------------
-let gaugeTab = true, pageIdx = 0;
-const gaugePages = () => {
+// A grid of gauge faces sized to the screen. Each device keeps its own layout, so a phone
+// and a laptop can show different numbers of gauges. The grid works out the column count
+// that makes the faces as big as possible, and stops adding once faces would get smaller
+// than MIN_FACE (still readable).
+const MIN_FACE = 160, MAX_FACE = 900, FACE_GAP = 12;
+let gaugeTab = true, editMode = false;
+let tiles = JSON.parse(localStorage.getItem("gaugeTiles") || "null") || [0];
+const tileEls = [];
+
+const allowedPages = () => {
   if (!S || !S.order) return PAGES.map((_, i) => i);
   const list = S.order.filter(p => p < PAGES.length && S.on[p]);
   return list.length ? list : [0];
 };
-function showPage(delta) {
-  const list = gaugePages();
-  pageIdx = ((pageIdx + delta) % list.length + list.length) % list.length;
-  $("pgName").textContent = PAGES[list[pageIdx]];
+const saveTiles = () => localStorage.setItem("gaugeTiles", JSON.stringify(tiles));
+
+function gridSpace() {
+  const box = $("faces"), full = document.fullscreenElement === $("tab-gauge");
+  const W = box.clientWidth || window.innerWidth - 32;
+  const top = box.getBoundingClientRect().top;
+  const editRoom = editMode ? 44 : 0;                       // page picker under each face
+  const H = window.innerHeight - top - (full ? 12 : 84);    // leave room for the tab bar
+  return { W, H, editRoom };
 }
-GaugeView.init($("face"));
-$("pgPrev").onclick = () => showPage(-1);
-$("pgNext").onclick = () => showPage(1);
-(() => {                                        // swipe, tap and 2 s hold on the gauge face
-  const cv = $("face");
-  let x0 = 0, y0 = 0, t0 = 0, holdTimer = null, held = false;
+function bestFit(n, sp) {
+  let best = 0, cols = 1;
+  for (let c = 1; c <= n; c++) {
+    const r = Math.ceil(n / c);
+    const size = Math.min((sp.W - (c - 1) * FACE_GAP) / c, (sp.H - (r - 1) * FACE_GAP) / r - sp.editRoom);
+    if (size > best) { best = size; cols = c; }
+  }
+  return { size: Math.floor(Math.min(best, MAX_FACE)), cols };
+}
+function capacity(sp) {
+  let n = 1;
+  while (n < 64 && bestFit(n + 1, sp).size >= MIN_FACE) n++;
+  return n;
+}
+
+function layoutFaces() {
+  const sp = gridSpace();
+  let fit = bestFit(tiles.length, sp);
+  const cap = capacity(sp);
+  if (fit.size < MIN_FACE) {                       // more gauges than fit: keep them readable and scroll
+    const cols = Math.max(1, Math.floor((sp.W + FACE_GAP) / (MIN_FACE + FACE_GAP)));
+    fit = { cols, size: Math.floor((sp.W - (cols - 1) * FACE_GAP) / cols) };
+  }
+  const size = fit.size;
+  $("faces").style.gridTemplateColumns = `repeat(${fit.cols}, ${size}px)`;
+  tileEls.forEach(t => t.wrap.style.width = size + "px");
+  $("gCap").textContent = `${tiles.length} of ${cap} fit`;
+  $("gAdd").disabled = tiles.length >= cap;
+}
+
+function buildFaces() {
+  const allowed = allowedPages();
+  tiles = tiles.map(t => allowed.includes(t) ? t : allowed[0]);
+  $("faces").innerHTML = "";
+  tileEls.length = 0;
+  tiles.forEach((type, i) => {
+    const wrap = document.createElement("div");
+    wrap.className = "ft";
+    const cv = document.createElement("canvas");
+    cv.className = "face"; cv.width = 480; cv.height = 480;
+    cv.setAttribute("aria-label", "Gauge: " + PAGES[type]);
+    wrap.appendChild(cv);
+    if (editMode) {
+      const ed = document.createElement("div");
+      ed.className = "ed";
+      ed.innerHTML = `<select aria-label="Page for gauge ${i + 1}">${allowed.map(p => `<option value="${p}" ${p === type ? "selected" : ""}>${PAGES[p]}</option>`).join("")}</select>
+        <button class="btn ghost" type="button" aria-label="Remove gauge ${i + 1}">X</button>`;
+      ed.querySelector("select").onchange = e => { tiles[i] = +e.target.value; saveTiles(); };
+      ed.querySelector("button").onclick = () => { if (tiles.length > 1) { tiles.splice(i, 1); saveTiles(); buildFaces(); } };
+      wrap.appendChild(ed);
+    }
+    $("faces").appendChild(wrap);
+    const el = { wrap, cv, ctx: cv.getContext("2d") };
+    tileEls.push(el);
+    attachFaceInput(cv, i);
+  });
+  layoutFaces();
+}
+
+function attachFaceInput(cv, i) {                 // swipe = change page, tap = keypad buttons, hold 2 s = reset peak
+  let x0 = 0, y0 = 0, holdTimer = null, held = false;
   const pt = e => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * 480 / r.width, (e.clientY - r.top) * 480 / r.height]; };
   cv.onpointerdown = e => {
-    [x0, y0] = pt(e); t0 = performance.now(); held = false;
+    [x0, y0] = pt(e); held = false;
     clearTimeout(holdTimer);
-    holdTimer = setTimeout(() => { held = true; GaugeView.resetPeak(gaugePages()[pageIdx]); }, 2000);
+    holdTimer = setTimeout(() => { held = true; GaugeView.resetPeak(tiles[i]); }, 2000);
   };
   cv.onpointerup = e => {
     clearTimeout(holdTimer);
     if (held) return;
     const [x, y] = pt(e), dx = x - x0, dy = y - y0;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) { showPage(dx < 0 ? 1 : -1); return; }
-    if (Math.abs(dx) < 15 && Math.abs(dy) < 15) GaugeView.tap(gaugePages()[pageIdx], x, y);
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy)) {
+      const allowed = allowedPages(), k = allowed.indexOf(tiles[i]);
+      tiles[i] = allowed[((k + (dx < 0 ? 1 : -1)) % allowed.length + allowed.length) % allowed.length];
+      saveTiles();
+      if (editMode) buildFaces();
+      return;
+    }
+    if (Math.abs(dx) < 15 && Math.abs(dy) < 15) GaugeView.tap(tiles[i], x, y);
   };
   cv.onpointerleave = cv.onpointercancel = () => clearTimeout(holdTimer);
-})();
+}
+
+$("gAdd").onclick = () => {
+  const allowed = allowedPages(), used = new Set(tiles);
+  tiles.push(allowed.find(p => !used.has(p)) ?? allowed[0]);   // next page not already shown
+  saveTiles(); buildFaces();
+};
+$("gEdit").onclick = () => { editMode = !editMode; $("gEdit").textContent = editMode ? "Done" : "Edit"; buildFaces(); };
+$("gFull").onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if ($("tab-gauge").requestFullscreen) $("tab-gauge").requestFullscreen().catch(() => {});
+};
+document.addEventListener("fullscreenchange", () => {
+  $("gFull").textContent = document.fullscreenElement ? "Exit full screen" : "Full screen";
+  setTimeout(layoutFaces, 50);
+});
+window.addEventListener("resize", () => layoutFaces());
+
 let lastFace = 0;
 function faceLoop(t) {
-  if (gaugeTab && !document.hidden && t - lastFace > 45) { lastFace = t; GaugeView.render(gaugePages()[pageIdx]); }
+  const period = tileEls.length > 4 ? 66 : 45;     // lighter refresh with lots of gauges
+  if (gaugeTab && !document.hidden && t - lastFace > period) {
+    lastFace = t;
+    tileEls.forEach((el, i) => GaugeView.render(tiles[i], el.ctx, el));
+  }
   requestAnimationFrame(faceLoop);
 }
 
@@ -526,6 +635,11 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("main section").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
   gaugeTab = b.dataset.tab === "gauge";
+  const wasLive = liveTab;
+  liveTab = b.dataset.tab === "live";
+  if (liveTab !== wasLive) subscribe().catch(() => {});
+  if (b.dataset.tab === "logs") Logs.refresh();
+  if (gaugeTab) setTimeout(layoutFaces, 0);
   if (b.dataset.tab === "diag") renderDiag();
 });
 $("connectBtn").onclick = connectClicked;
@@ -537,7 +651,9 @@ buildKeypad();
 setInterval(refreshLive, 100);                  // screen updates 10 times a second
 setInterval(() => { refreshDyno(); if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) pollWarns(); }, 1000);
 renderDiag();
-showPage(0);
+buildFaces();
+Logs.init();
+setInterval(() => { if (connected && !document.getElementById("tab-logs").hidden) Logs.refresh(); }, 5000);
 requestAnimationFrame(faceLoop);
 autoConnect();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});

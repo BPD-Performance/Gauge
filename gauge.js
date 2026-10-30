@@ -40,7 +40,8 @@ const GaugeView = (() => {
   const CELL_LABEL = 2.25, CELL_BIG = 12, CELL_MED = 3, CELL_SMALL = 2.5;
   const rad = d => d * Math.PI / 180;
 
-  let px = null, img = null, ctx = null, canvas = null;
+  const img = new ImageData(480, 480);
+  const px = new Uint32Array(img.data.buffer);
 
   const textW = (s, cell) => { let c = 0; for (const ch of s) c += glyph(ch)[0].length + 1; return Math.max(0, c - 1) * cell; };
   const gRefBot = CY + LR * Math.sin(rad(255)) + 7 * CELL_LABEL / 2;
@@ -73,6 +74,7 @@ const GaugeView = (() => {
     }
   }
   function drawText(s, x, cy, cell, c, align) {
+    s = String(s);
     const w = textW(s, cell);
     let x0 = align === 1 ? x - w / 2 : align === 2 ? x - w : x;
     const y0 = cy - 3.5 * cell;
@@ -166,7 +168,7 @@ const GaugeView = (() => {
   const fmtP = (k, barDp) => st("pu") == 1 ? (k / 100).toFixed(barDp) : String(Math.round(pConv(k)));
   const tConv = c => Math.round(st("tu") == 1 ? c * 9 / 5 + 32 : c);
   const tUnit = () => st("tu") == 1 ? "*F" : "*C";
-  const g = (v, f) => v === null ? "--" : f(v);
+  const g = (v, f) => v === null ? "--" : String(f(v));
   const fmtL = v => { let s = (Math.round(v * 100) / 100).toString(); return s; };
 
   let boostPk = null, iatPk = null;
@@ -272,6 +274,7 @@ const GaugeView = (() => {
         s.mode = "keypad";
         s.tgt = d.tgtBoost === null ? "TGT --" : `TGT ${fmtP(d.tgtBoost, 2)} ${pUnit()}`;
         s.idle = !!((gaugeStatus.held >> 2) & 1);
+        s.log = !(gaugeStatus.log & 1) ? 0 : (gaugeStatus.log & 2) ? 2 : 1;
         break;
       }
       case 9: {          // alerts
@@ -287,12 +290,22 @@ const GaugeView = (() => {
   const KB = [[94, 210], [246, 210], [94, 312], [246, 312]], KB_W = 140, KB_H = 90;
   let flashBtn = 0, flashUntil = 0;
 
-  function render(type) {
-    px.fill(C_DIM);
+  // Draw one page into ctx (a 480 x 480 canvas). Several canvases share the pixel buffer.
+  // tile remembers what was last drawn on that canvas, so nothing is redrawn until it changes.
+  function render(type, ctx, tile) {
     const d = readData();
     if (d.boost !== null && (boostPk === null || d.boost > boostPk)) boostPk = d.boost;
     if (d.iat !== null && (iatPk === null || d.iat > iatPk)) iatPk = d.iat;
     const s = buildPage(type, d);
+    const now = performance.now();
+    s.pressed = now < flashUntil ? flashBtn : 0;
+    s.dyno = gaugeStatus.dyno ? 1 : 0;
+    s.rec = (gaugeStatus.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
+    s.shift = st("w_shift_on") && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
+    const sig = type + JSON.stringify(s);
+    if (tile && tile.sig === sig) return;            // nothing changed on this face
+    if (tile) tile.sig = sig;
+    px.fill(C_DIM);
     if (s.mode === "gauge") {
       drawRing(s.seg);
       s.lbl.forEach((l, k) => { const a = rad(135 + k * 60); drawText(l, CX + LR * Math.cos(a), CY + LR * Math.sin(a), CELL_LABEL, C_LIT, 1); });
@@ -307,14 +320,14 @@ const GaugeView = (() => {
     } else if (s.mode === "keypad") {
       drawTitle("KEYPAD", false);
       drawText(s.tgt, CX, gTitleY + TH + 26, CELL_MED, C_LIT, 1);
-      const pressed = performance.now() < flashUntil ? flashBtn : 0;
+      const pressed = s.pressed;
       KB.forEach(([x, y], b) => {
-        const spare = b === 3, on = (b === 2 && s.idle) || pressed === b + 1, col = spare ? C_OFF : C_LIT;
+        const spare = b === 3 && s.log === 0, on = (b === 2 && s.idle) || (b === 3 && s.log === 2) || pressed === b + 1, col = spare ? C_OFF : C_LIT;
         if (on) fillRect(x, y, x + KB_W - 1, y + KB_H - 1, col); else outlineRect(x, y, KB_W, KB_H, 4, col, spare);
         const tc = on ? C_BG : col, cx = x + KB_W / 2;
         if (b < 2) { drawText("BOOST", cx, y + 28, CELL_SMALL, tc, 1); drawText(b ? "+" : "-", cx, y + 62, 4.5, tc, 1); }
         else if (b === 2) { drawText("ROT IDLE", cx, y + 28, CELL_SMALL, tc, 1); drawText(s.idle ? "ON" : "OFF", cx, y + 62, CELL_MED, tc, 1); }
-        else drawText("SPARE", cx, y + KB_H / 2 + 2, CELL_SMALL, tc, 1);
+        else { drawText("LOG", cx, y + 28, CELL_SMALL, tc, 1); drawText(s.log === 0 ? "NO SD" : s.log === 2 ? "REC" : "OFF", cx, y + 62, CELL_MED, tc, 1); }
       });
     } else if (s.mode === "alerts") {
       drawTitle("ALERTS", false);
@@ -325,9 +338,14 @@ const GaugeView = (() => {
       drawText("DTC  --", CX, y + 1, CELL_SMALL, C_BG, 1); y += 40;
       drawText("NOT LINKED YET", CX, y, CELL_SMALL, C_LIT, 1);
     }
-    if (gaugeStatus.dyno) { fillRect(CX - 40, BPD_Y - 12, CX + 39, BPD_Y + 11, C_BRAND); drawText("DYNO", CX, BPD_Y, CELL_LABEL, C_BG, 1); }
+    if (s.dyno) { fillRect(CX - 40, BPD_Y - 12, CX + 39, BPD_Y + 11, C_BRAND); drawText("DYNO", CX, BPD_Y, CELL_LABEL, C_BG, 1); }
     else drawText("BPD", CX, BPD_Y, CELL_LABEL, C_BRAND, 1);
-    if (st("w_shift_on") && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(performance.now() / 80) % 2 === 0) fillAnnulus(226, 240, C_LIT);
+    if (s.rec) {
+      const rx = CX - 48, dx = rx - textW("REC", CELL_LABEL) - 14;
+      drawText("REC", rx, BPD_Y, CELL_LABEL, C_WARN, 2);
+      fillRect(dx, BPD_Y - 5, dx + 9, BPD_Y + 4, C_WARN);
+    }
+    if (s.shift) fillAnnulus(226, 240, C_LIT);
     drawGrid();
     ctx.putImageData(img, 0, 0);
   }
@@ -335,22 +353,18 @@ const GaugeView = (() => {
   // Tap on the keypad page sends the same keypad B buttons as the gauge (1 boost +, 2 boost -, 3 rotational idle)
   function tap(type, x, y) {
     if (type !== 8) return;
-    for (let b = 0; b < 3; b++) {
+    for (let b = 0; b < 4; b++) {
       const [bx, by] = KB[b];
       if (x < bx || x >= bx + KB_W || y < by || y >= by + KB_H) continue;
       flashBtn = b + 1; flashUntil = performance.now() + 150;
       if (b === 0) cmd({ cmd: "key", btn: 2 }).catch(e => alert(e.message));
       if (b === 1) cmd({ cmd: "key", btn: 1 }).catch(e => alert(e.message));
       if (b === 2) cmd({ cmd: "hold", btn: 3, on: ((gaugeStatus.held >> 2) & 1) ? 0 : 1 }).catch(e => alert(e.message));
+      if (b === 3 && (gaugeStatus.log & 1)) cmd({ cmd: "log", on: (gaugeStatus.log & 2) ? 0 : 1 }).catch(e => alert(e.message));
     }
   }
 
-  function init(cv) {
-    canvas = cv; ctx = cv.getContext("2d");
-    img = ctx.createImageData(480, 480);
-    px = new Uint32Array(img.data.buffer);
-  }
   function resetPeak(type) { if (type === 0) boostPk = null; if (type === 6) iatPk = null; }
 
-  return { init, render, tap, resetPeak };
+  return { render, tap, resetPeak };
 })();

@@ -28,9 +28,10 @@ header img{min-width:0;flex:0 1 auto;max-width:60%;object-fit:contain;object-pos
 #connectBtn.connecting{border-style:dashed;animation:blink .8s steps(1) infinite}
 #connectBtn.connected{background:var(--amber);color:var(--bg)}
 @keyframes blink{50%{opacity:.35}}
-main{max-width:620px;margin:0 auto;padding:12px 16px}
-nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px solid var(--line);display:grid;grid-template-columns:repeat(6,1fr);z-index:2}
-nav button{background:none;border:0;font:12px var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0}
+main{margin:0 auto;padding:12px 16px}
+main>section:not(#tab-gauge){max-width:620px;margin:0 auto}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px solid var(--line);display:grid;grid-template-columns:repeat(7,1fr);z-index:2}
+nav button{background:none;border:0;font:11px var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0}
 nav button[aria-selected=true]{background:var(--amber);color:var(--bg)}
 section[hidden],.row[hidden]{display:none}
 h2{font:16px var(--dot);margin:22px 0 8px;display:inline-block;background:var(--amber);color:var(--bg);padding:3px 12px}
@@ -70,16 +71,41 @@ label{display:block;font:12px var(--dot);color:var(--amber2);margin-bottom:4px}
 .card p{margin:0 0 8px;font:14px var(--dot)}
 .card.alarm{border-color:var(--warn)}
 .chk{display:flex;gap:10px;align-items:center}
-.chk input{width:24px;height:24px;min-height:0;accent-color:var(--amber)}
+input[type=checkbox],.dx{appearance:none;-webkit-appearance:none;display:inline-block;flex:none;width:23px;height:23px;min-height:0;margin:0;padding:0;border:2px solid var(--amber);border-radius:0;background-color:var(--bg);background-position:center;background-size:15px 15px;background-repeat:no-repeat;vertical-align:-6px;cursor:pointer}
+input[type=checkbox]:checked,.dx.on{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' shape-rendering='crispEdges'%3E%3Cg fill='%23ED008C'%3E%3Crect x='12' y='3' width='3' height='3'/%3E%3Crect x='9' y='6' width='3' height='3'/%3E%3Crect x='0' y='9' width='3' height='3'/%3E%3Crect x='6' y='9' width='3' height='3'/%3E%3Crect x='3' y='12' width='3' height='3'/%3E%3C/g%3E%3C/svg%3E")}
+.chipck{display:inline-flex;align-items:center;gap:6px;font:12px var(--dot);border:2px solid var(--line);color:#6B4800;padding:4px 8px;margin:0 6px 6px 0;cursor:pointer;user-select:none}
+.chipck.sel{border-color:var(--amber)}
+.sm{font:11px var(--dot);color:var(--amber2)}
+.bar{height:14px;border:2px solid var(--amber)}.bar>div{height:100%;background:var(--amber)}
+.frow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line);font:13px var(--dot)}
+.frow:last-child{border-bottom:0}
+.fbtn{display:flex;gap:6px}.fbtn .btn{min-height:34px;font-size:12px;padding:0 10px}
+.btn.red{border-color:var(--warn);color:var(--warn)}
+.lrow{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--line);font:13px var(--dot)}
+.lrow:last-child{border-bottom:0}
+.ck2{display:flex;align-items:center;gap:8px;margin:0;font:13px var(--dot);color:var(--amber)}
+.num{width:76px;min-height:34px;padding:4px 6px;text-align:right}
+.seg{display:flex;gap:6px}.seg .btn{min-height:36px;font-size:13px;flex:1}
+#logCv{display:block;width:100%;height:260px;border:2px solid var(--line);touch-action:none;cursor:col-resize}
+.vbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}.vbar .btn{min-height:36px;font-size:12px;padding:0 10px}
+#logRead{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font:11px var(--dot);margin:8px 0}
 .pg{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font:14px var(--dot)}
 .mv{width:44px;height:44px;border:2px solid var(--line);background:var(--bg);color:var(--amber);font:inherit;border-radius:0}
 .actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
 #msg{font:13px var(--dot);color:var(--amber2);min-height:1.5em}
 pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px;font-size:.8rem;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .empty{background:var(--bg);border:2px dashed var(--line);padding:16px;color:var(--amber2);font:13px var(--dot)}
-.face{display:block;width:100%;max-width:420px;aspect-ratio:1;margin:8px auto 0;border-radius:50%;border:4px solid #222;touch-action:pan-y;image-rendering:auto}
-.pager{display:flex;align-items:center;justify-content:center;gap:12px;margin:10px 0}
-.pager span{font:14px var(--dot);min-width:150px;text-align:center}
+.gbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 10px}
+.gbar .btn{min-height:38px;font-size:13px;padding:0 12px}
+#gCap{font:12px var(--dot);color:var(--amber2);margin-left:auto}
+.faces{display:grid;gap:12px;justify-content:center}
+.ft{display:flex;flex-direction:column;align-items:center;gap:6px}
+.face{display:block;aspect-ratio:1;border-radius:50%;border:3px solid #222;touch-action:none;width:100%}
+.ft .ed{display:flex;gap:6px;width:100%}
+.ft .ed select{min-height:36px;padding:4px 6px;font-size:12px}
+.ft .ed button{min-height:36px;padding:0 10px;font-size:12px}
+#tab-gauge:fullscreen{background:var(--bg);padding:10px;overflow:auto}
+#tab-gauge:fullscreen #gHint{display:none}
 .wl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font:14px var(--dot)}
 .wl:last-child{border-bottom:0}
 .wl .v{color:var(--warn);text-align:right}
@@ -96,13 +122,14 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 
 <main>
 <section id="tab-gauge">
- <canvas class="face" id="face" width="480" height="480" aria-label="Gauge screen"></canvas>
- <div class="pager">
-  <button class="btn ghost" id="pgPrev" type="button" aria-label="Previous page">&lt;</button>
-  <span id="pgName">Boost</span>
-  <button class="btn ghost" id="pgNext" type="button" aria-label="Next page">&gt;</button>
+ <div class="gbar">
+  <button class="btn" id="gAdd" type="button">+ Add gauge</button>
+  <button class="btn ghost" id="gEdit" type="button">Edit</button>
+  <button class="btn ghost" id="gFull" type="button">Full screen</button>
+  <span id="gCap"></span>
  </div>
- <p class="lead" style="text-align:center">Shows the same pages as the gauge. Swipe or use the arrows. On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
+ <div class="faces" id="faces"></div>
+ <p class="lead" id="gHint" style="text-align:center">Add as many gauges as fit this screen. Swipe a gauge to change its page, or use Edit. On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
 </section>
 
 <section id="tab-live" hidden>
@@ -142,6 +169,32 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
  <div class="actions"><button class="btn ghost" type="button" disabled>Read codes</button><button class="btn ghost" type="button" disabled>Clear codes</button></div>
 </section>
 
+<section id="tab-logs" hidden>
+ <h2>Recording</h2>
+ <div class="card"><div class="switch"><p style="margin:0" id="recState"></p><button class="btn pink" id="recBtn" type="button">Start log</button></div></div>
+ <h2>SD card</h2>
+ <div id="logStore"></div>
+ <div class="actions" style="margin:10px 0"><button class="btn ghost" id="logRefresh" type="button">Refresh</button><button class="btn ghost red" id="delAll" type="button">Delete all</button></div>
+ <p class="lead" id="logMsg" role="status"></p>
+ <div class="list" id="fileList"></div>
+ <h2>On this phone</h2>
+ <div class="list" id="localList"></div>
+ <div id="viewer" hidden>
+  <h2 id="logTitle">Log</h2>
+  <div class="vbar"><button class="btn ghost" id="logMode" type="button">Overlay</button><button class="btn ghost" id="logReplay" type="button">Gauges: live</button><button class="btn ghost" id="logClose" type="button">Close</button></div>
+  <div id="logRead"></div>
+  <canvas id="logCv" aria-label="Log graph"></canvas>
+  <div class="vbar">
+   <button class="btn pink" id="logPlay" type="button">Play</button>
+   <button class="btn ghost" data-sp="1" type="button">1x</button><button class="btn" data-sp="2" type="button">2x</button><button class="btn ghost" data-sp="4" type="button">4x</button>
+   <button class="btn ghost" id="zOut" type="button" aria-label="Zoom out">-</button><button class="btn ghost" id="zIn" type="button" aria-label="Zoom in">+</button><button class="btn ghost" id="zFit" type="button">Fit</button>
+   <span id="logTime" style="margin-left:auto;font:14px var(--dot)">0:00.0</span>
+  </div>
+  <div id="logChips"></div>
+  <p class="lead">Drag the graph to move the cursor, pinch or scroll to zoom. Red marks show where a warning tripped. "Gauges: log" plays the log on the Gauge tab.</p>
+ </div>
+</section>
+
 <section id="tab-settings" hidden>
  <div id="settingsBody"><div class="empty">Connect to the gauge to load its settings.</div></div>
  <p id="msg" role="status"></p>
@@ -157,7 +210,7 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
  <h2>Dyno mode</h2>
  <div class="card">
   <div class="switch"><p style="margin:0">Dyno mode</p><button class="btn ghost" id="dynoBtn" type="button">Turn on</button></div>
-  <div class="lead" style="margin:8px 0 0">For the dyno, where the wheels turn but the car isn't going anywhere. Lets you save settings and keeps the gauge's WiFi on while the wheels are turning, with no 15 minute WiFi limit. The gauge shows DYNO at the bottom while it's on. It turns itself off when the gauge restarts.</div>
+  <div class="lead" style="margin:8px 0 0">For the dyno, where the wheels turn but the car isn't going anywhere. Lets this app save settings to the gauge over Bluetooth while the wheels are turning. The gauge shows DYNO at the bottom while it's on. It turns itself off when the gauge restarts.</div>
  </div>
  <h2>Bench test</h2>
  <p class="lead">Makes the gauge generate realistic fake Haltech data (a 24 second loop: idle, a full-throttle run through 1st to 4th with boost, then idle). The gauge and this app behave as if the car is running. It switches off by itself on restart or if real ECU data appears, and keypad frames are never sent to the car while it runs. Boost + and − on the Keypad tab move the simulated target boost.</p>
@@ -172,7 +225,8 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 <nav role="tablist">
  <button role="tab" aria-selected="true" data-tab="gauge">Gauge</button>
  <button role="tab" aria-selected="false" data-tab="live">Live</button>
- <button role="tab" aria-selected="false" data-tab="keypad">Keypad</button>
+ <button role="tab" aria-selected="false" data-tab="keypad">Keys</button>
+ <button role="tab" aria-selected="false" data-tab="logs">Logs</button>
  <button role="tab" aria-selected="false" data-tab="diag">Diag</button>
  <button role="tab" aria-selected="false" data-tab="settings">Setup</button>
  <button role="tab" aria-selected="false" data-tab="device">Device</button>
@@ -180,5 +234,6 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 
 <script src="haltech.js"></script>
 <script src="gauge.js"></script>
+<script src="logs.js"></script>
 <script src="app.js"></script>
 </body></html>
