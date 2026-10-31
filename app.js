@@ -366,6 +366,22 @@ async function loadSettings() {
   if ($("gpsBox")) Track.render($("gpsBox"));
 }
 
+// Turn each heading into a drop-down section; everything up to the next heading (or an
+// always-visible ".keep" block such as the save buttons) folds away. Open/closed is remembered.
+function collapseSections(box) {
+  const open = JSON.parse(localStorage.getItem("secOpen") || "{}");
+  [...box.querySelectorAll(":scope > h2")].forEach(h => {
+    const d = document.createElement("details"), sm = document.createElement("summary"), body = document.createElement("div");
+    const key = h.textContent;
+    d.className = "sec"; sm.innerHTML = `<span>${h.textContent}</span><span class="pm" aria-hidden="true"></span>`; body.className = "secbody";
+    d.open = !!open[key];
+    let n = h.nextElementSibling;
+    while (n && n.tagName !== "H2" && !n.classList.contains("keep")) { const next = n.nextElementSibling; body.appendChild(n); n = next; }
+    h.replaceWith(d); d.append(sm, body);
+    d.addEventListener("toggle", () => { open[key] = d.open; localStorage.setItem("secOpen", JSON.stringify(open)); if (d.open) Track.redraw(); });
+  });
+}
+
 function renderSettings() {
   const tyre = (p, title) => `<div class="card"><p>${title}</p><div class="grid3">${fld(p + "w", "Width")}${fld(p + "a", "Profile")}${fld(p + "r", "Rim (in)")}</div></div>`;
   $("settingsBody").innerHTML = `
@@ -383,9 +399,10 @@ function renderSettings() {
   <h2>Screen</h2>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
-  <div class="actions"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
+  <div class="actions keep"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
   <h2>Logging</h2><div id="logSettings"></div>
   <h2>GPS and lap timer</h2><div id="gpsBox"></div>`;
+  collapseSections($("settingsBody"));
 
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
     .forEach(k => { if (S[k] !== undefined) $(k).value = S[k]; });

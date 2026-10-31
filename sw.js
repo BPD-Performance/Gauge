@@ -1,5 +1,5 @@
 // Keeps the app working with no internet (e.g. at the track). New versions load when online.
-const CACHE = "bpd-gauge-v6";
+const CACHE = "bpd-gauge-v7";
 const FILES = ["./", "index.html", "app.js", "haltech.js", "gauge.js", "logs.js", "track.js", "bpddot.ttf", "logo-flames.png", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });

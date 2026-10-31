@@ -111,6 +111,14 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 .wl .v{color:var(--warn);text-align:right}
 .wl small{grid-column:1/-1;color:var(--amber2);font-size:11px}
 .switch{display:flex;align-items:center;justify-content:space-between;gap:12px}
+details.sec{margin:10px 0;border:2px solid var(--amber);background:var(--bg)}
+details.sec>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:12px;font:15px var(--dot);color:var(--amber);min-height:48px;user-select:none}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec[open]>summary{background:var(--amber);color:var(--bg)}
+details.sec>summary .pm::before{content:"+";font-size:20px}
+details.sec[open]>summary .pm::before{content:"-"}
+.secbody{padding:12px}
+.secbody>h2:first-child{margin-top:0}
 </style></head><body>
 
 <header>
