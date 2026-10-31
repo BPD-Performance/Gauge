@@ -15,7 +15,9 @@ const Logs = (() => {
     { n: "IAT", s: 10, k: "t", c: "#FF7A1F" },                  { n: "BATT", s: 100, k: "n", u: "V", c: "#C9A0FF" },
     { n: "THROTTLE", s: 10, k: "n", u: "%", c: "#00E5FF" },     { n: "SPEED", s: 10, k: "s", c: "#FFB38A" },
     { n: "GEAR", s: 1, k: "g", u: "", c: "#A6FF8F" },           { n: "IGN ANGLE", s: 10, k: "n", u: "°", c: "#F2A0FF" },
+    { n: "GPS", s: 10, k: "s", c: "#4FFFE0" },                  // bit 18: GPS block (position, GPS speed, lap)
   ];
+  const NUM16 = 18, GPS_BIT = 18;
   const HDR = 32;
   const unitsOf = () => ({ pu: S ? S.pu : 2, tu: S ? S.tu : 0, su: S ? S.su : 0, lam: S ? S.lam : 1, sto: S ? S.stoich : 14.7 });
 
@@ -54,18 +56,31 @@ const Logs = (() => {
     const v = new DataView(buf);
     if (buf.byteLength < HDR || String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== "BPDL") throw new Error("not a BPD log");
     const rate = v.getUint8(5), t0 = v.getUint32(8, true), mask = v.getUint32(12, true), preMs = v.getUint32(16, true);
-    const ids = []; for (let i = 0; i < CH.length; i++) if (mask & (1 << i)) ids.push(i);
-    const rs = 4 + ids.length * 2 + 2, rows = Math.floor((buf.byteLength - HDR) / rs);
+    const hasGps = v.getUint8(4) >= 2 && !!(mask & (1 << GPS_BIT));
+    const ids = []; for (let i = 0; i < NUM16; i++) if (mask & (1 << i)) ids.push(i);
+    const rs = 4 + ids.length * 2 + (hasGps ? 12 : 0) + 2, rows = Math.floor((buf.byteLength - HDR) / rs);
     const t = new Float32Array(rows), w = new Uint16Array(rows), data = {};
     ids.forEach(id => data[id] = new Float32Array(rows));
+    const lat = hasGps ? new Float64Array(rows) : null, lon = hasGps ? new Float64Array(rows) : null, lap = hasGps ? new Uint16Array(rows) : null;
+    if (hasGps) data[GPS_BIT] = new Float32Array(rows);
     for (let r = 0, o = HDR; r < rows; r++, o += rs) {
       t[r] = v.getUint32(o, true) / 1000;
       ids.forEach((id, j) => { const raw = v.getInt16(o + 4 + j * 2, true); data[id][r] = raw === -32768 ? NaN : raw / CH[id].s; });
-      w[r] = v.getUint16(o + 4 + ids.length * 2, true);
+      let g = o + 4 + ids.length * 2;
+      if (hasGps) {
+        const la = v.getInt32(g, true), lo = v.getInt32(g + 4, true), sp = v.getUint16(g + 8, true);
+        lat[r] = la === -2147483648 ? NaN : la / 1e7; lon[r] = lo === -2147483648 ? NaN : lo / 1e7;
+        data[GPS_BIT][r] = sp === 0xFFFF ? NaN : sp / 10; lap[r] = v.getUint16(g + 10, true);
+        g += 12;
+      }
+      w[r] = v.getUint16(g, true);
     }
+    if (hasGps) ids.push(GPS_BIT);
+    const laps = [];                               // completed laps from the lap counter
+    if (hasGps) for (let r = 1, s0 = -1; r < rows; r++) if (lap[r] !== lap[r - 1]) { if (s0 >= 0 && lap[r - 1] > 0) laps.push({ n: lap[r - 1], i0: s0, i1: r, ms: Math.round((t[r] - t[s0]) * 1000) }); s0 = r; }
     const marks = [];
     for (let r = 1; r < rows; r++) if (w[r] & ~w[r - 1]) marks.push(r);       // a new warning tripped
-    return { name, rate, t0, preMs, ids, rows, t, w, data, marks, dur: rows ? t[rows - 1] : 0 };
+    return { name, rate, t0, preMs, ids, rows, t, w, data, marks, dur: rows ? t[rows - 1] : 0, hasGps, lat, lon, lap, laps };
   }
 
   // ---------------- Download over Bluetooth ----------------
@@ -104,7 +119,7 @@ const Logs = (() => {
   let files = [], status = null, view = null;
   const $l = id => document.getElementById(id);
   const fmtSize = b => b > 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
-  const rowSizeOf = mask => { let n = 0; for (let i = 0; i < CH.length; i++) if (mask & (1 << i)) n++; return 4 + n * 2 + 2; };
+  const rowSizeOf = mask => { let n = 0; for (let i = 0; i < NUM16; i++) if (mask & (1 << i)) n++; return 4 + n * 2 + ((mask & (1 << GPS_BIT)) ? 12 : 0) + 2; };
   const fmtDur = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
   const fmtDate = (t0, n) => t0 ? new Date(t0 * 1000).toLocaleString([], { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : n;
 
@@ -112,7 +127,7 @@ const Logs = (() => {
     if (!connected) { renderFiles(); return; }
     try {
       const [l, st] = [await cmd({ cmd: "ls" }), await cmd({ cmd: "logget" })];
-      files = l.ok ? l.files.sort((a, b) => b.n.localeCompare(a.n)) : [];
+      files = l.ok ? l.files.sort((a, b) => (b.t0 - a.t0) || b.n.localeCompare(a.n)) : [];   // newest first
       status = st.ok ? st.log : null;
     } catch (e) { $l("logMsg").textContent = e.message; }
     renderFiles();
@@ -130,7 +145,7 @@ const Logs = (() => {
     const cachedNames = new Set(cached.map(c => c.n));
     $l("fileList").innerHTML = connected && files.length ? files.map((f, i) => {
       const secs = (f.size - HDR) / rowSizeOf(f.ch) / (f.rate || 20);
-      return `<div class="frow" data-i="${i}"><div><div>${fmtDate(f.t0, f.n)}</div><div class="sm">${fmtDur(secs)}  ${fmtSize(f.size)}${cachedNames.has(f.n) ? "  ON PHONE" : ""}${f.open ? "  RECORDING" : ""}</div></div>
+      return `<div class="frow" data-i="${i}"><div><div>${fmtDate(f.t0, f.n)}</div><div class="sm">${f.n}</div><div class="sm">${fmtDur(secs)}  ${fmtSize(f.size)}${cachedNames.has(f.n) ? "  ON PHONE" : ""}${f.open ? "  RECORDING" : ""}</div></div>
         <div class="fbtn"><button class="btn" data-open="${i}" type="button">Open</button><button class="btn ghost" data-csv="${i}" type="button">CSV</button>${f.open ? "" : `<button class="btn ghost red" data-del="${i}" type="button">Del</button>`}</div></div>`; }).join("")
       : `<div class="empty">${connected ? "No logs on the card." : "Not connected."}</div>`;
     const local = cached.filter(c => !files.find(f => f.n === c.n));
@@ -170,9 +185,10 @@ const Logs = (() => {
 
   function exportCsv(rec) {
     const L = parse(rec.buf, rec.n);
-    const head = ["time_s", ...L.ids.map(id => { const u = show(id, 1)[1]; return CH[id].n + (u ? ` (${u})` : ""); }), "warnings"];
+    const head = ["time_s", ...L.ids.map(id => { const u = show(id, 1)[1]; return (id === GPS_BIT ? "GPS SPEED" : CH[id].n) + (u ? ` (${u})` : ""); }), ...(L.hasGps ? ["latitude", "longitude", "lap"] : []), "warnings"];
     const lines = [head.join(",")];
-    for (let r = 0; r < L.rows; r++) lines.push([L.t[r].toFixed(2), ...L.ids.map(id => { const v = L.data[id][r]; return isNaN(v) ? "" : show(id, v)[0]; }), L.w[r]].join(","));
+    for (let r = 0; r < L.rows; r++) lines.push([L.t[r].toFixed(2), ...L.ids.map(id => { const v = L.data[id][r]; return isNaN(v) ? "" : show(id, v)[0]; }),
+      ...(L.hasGps ? [isNaN(L.lat[r]) ? "" : L.lat[r].toFixed(7), isNaN(L.lon[r]) ? "" : L.lon[r].toFixed(7), L.lap[r]] : []), L.w[r]].join(","));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
     a.download = rec.n.replace(".BPL", ".csv");
@@ -190,6 +206,8 @@ const Logs = (() => {
     cur = 0; v0 = 0; v1 = Math.max(1, L.dur);
     $l("viewer").hidden = false;
     $l("logTitle").textContent = fmtDate(L.t0, L.name);
+    $l("logMapBox").hidden = !L.hasGps;
+    renderLaps();
     buildChips(); draw();
     $l("viewer").scrollIntoView({ behavior: "smooth" });
   }
@@ -245,9 +263,45 @@ const Logs = (() => {
     const ci = idxAt(cur), cx = tx(cur);
     x.strokeStyle = "#FFFFFF"; x.lineWidth = 1.5 * dpr; x.beginPath(); x.moveTo(cx, 0); x.lineTo(cx, gh); x.stroke();
     $l("logTime").textContent = `${fmtDur(cur)}.${Math.floor((cur % 1) * 10)}`;
-    $l("logRead").innerHTML = ks.map(id => { const [val, u] = show(id, L.data[id][ci]); const warn = L.w[ci] && L.marks.length;
-      return `<div style="border:2px solid var(--line);padding:2px 6px;color:${CH[id].c}">${CH[id].n}<br><span style="font-size:16px">${val}</span> ${u}</div>`; }).join("");
+    $l("logRead").innerHTML = ks.map(id => { const [val, u] = show(id, L.data[id][ci]);
+      return `<div style="border:2px solid var(--line);padding:2px 6px;color:${CH[id].c}">${id === GPS_BIT ? "GPS SPEED" : CH[id].n}<br><span style="font-size:16px">${val}</span> ${u}</div>`; }).join("");
     if (replayOn) feedReplay(ci);
+    drawMap(ci);
+  }
+
+  // ---------------- GPS track map and laps ----------------
+  let mapView = null;
+  function drawMap(ci) {
+    if (!L || !L.hasGps) return;
+    const c = $l("logMap"), dpr = window.devicePixelRatio || 1, W = c.clientWidth * dpr, H = c.clientHeight * dpr;
+    if (!W) return;
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; mapView = null; }
+    if (!mapView) {
+      let a = Infinity, b = -Infinity, cmin = Infinity, d = -Infinity;
+      for (let i = 0; i < L.rows; i++) if (!isNaN(L.lat[i])) { a = Math.min(a, L.lat[i]); b = Math.max(b, L.lat[i]); cmin = Math.min(cmin, L.lon[i]); d = Math.max(d, L.lon[i]); }
+      if (a === Infinity) return;
+      const lat0 = (a + b) / 2, lon0 = (cmin + d) / 2, k = Math.cos(lat0 * Math.PI / 180);
+      const sx = (d - cmin) * k || 1e-5, sy = (b - a) || 1e-5, s = Math.min(W, H) * 0.9 / Math.max(sx, sy);
+      mapView = { px: (la, lo) => [W / 2 + (lo - lon0) * k * s, H / 2 - (la - lat0) * s] };
+    }
+    const x = c.getContext("2d");
+    x.fillStyle = "#060300"; x.fillRect(0, 0, W, H);
+    x.strokeStyle = "#6B4800"; x.lineWidth = 2 * dpr; x.beginPath();
+    let pen = false;
+    for (let i = 0; i < L.rows; i += 2) { if (isNaN(L.lat[i])) { pen = false; continue; } const [a, b] = mapView.px(L.lat[i], L.lon[i]); pen ? x.lineTo(a, b) : x.moveTo(a, b); pen = true; }
+    x.stroke();
+    const lapNow = L.laps.find(l => ci >= l.i0 && ci < l.i1);             // highlight the lap the cursor is in
+    if (lapNow) { x.strokeStyle = "#FFB000"; x.lineWidth = 3 * dpr; x.beginPath(); pen = false;
+      for (let i = lapNow.i0; i < lapNow.i1; i++) { if (isNaN(L.lat[i])) continue; const [a, b] = mapView.px(L.lat[i], L.lon[i]); pen ? x.lineTo(a, b) : x.moveTo(a, b); pen = true; } x.stroke(); }
+    if (!isNaN(L.lat[ci])) { const [a, b] = mapView.px(L.lat[ci], L.lon[ci]); x.fillStyle = "#ED008C"; x.beginPath(); x.arc(a, b, 6 * dpr, 0, 7); x.fill(); }
+  }
+  function renderLaps() {
+    if (!L || !L.hasGps) { $l("logLaps").innerHTML = ""; return; }
+    const best = L.laps.length ? Math.min(...L.laps.map(l => l.ms)) : 0;
+    const lt = ms => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${String(Math.floor(ms % 1000 / 10)).padStart(2, "0")}`;
+    $l("logLaps").innerHTML = L.laps.length ? L.laps.map((l, i) => `<button class="btn ${l.ms === best ? "pink" : "ghost"}" data-lap="${i}" type="button" style="min-height:34px;font-size:12px;margin:0 6px 6px 0">LAP ${l.n}  ${lt(l.ms)}</button>`).join("")
+      : `<div class="sm">No complete laps in this log (set a start/finish line on the gauge or in Setup).</div>`;
+    document.querySelectorAll("[data-lap]").forEach(b => b.onclick = () => { const l = L.laps[+b.dataset.lap]; v0 = L.t[l.i0]; v1 = L.t[l.i1 - 1]; cur = v0; draw(); });
   }
 
   // Cursor drag, wheel zoom, pinch zoom
@@ -269,6 +323,13 @@ const Logs = (() => {
     $l("zIn").onclick = () => L && zoomAt(cur, 0.5);
     $l("zOut").onclick = () => L && zoomAt(cur, 2);
     $l("zFit").onclick = () => { if (L) { v0 = 0; v1 = Math.max(1, L.dur); draw(); } };
+    $l("logMap").onclick = e => {                          // tap the map: jump the cursor to the nearest point
+      if (!L || !L.hasGps || !mapView) return;
+      const c = $l("logMap"), r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1, mx = (e.clientX - r.left) * dpr, my = (e.clientY - r.top) * dpr;
+      let bi = -1, bd = Infinity;
+      for (let i = 0; i < L.rows; i++) { if (isNaN(L.lat[i])) continue; const [a, b] = mapView.px(L.lat[i], L.lon[i]), d = (a - mx) ** 2 + (b - my) ** 2; if (d < bd) { bd = d; bi = i; } }
+      if (bi >= 0) { cur = L.t[bi]; draw(); }
+    };
   }
 
   function tick(ts) {
@@ -299,6 +360,10 @@ const Logs = (() => {
     put(0x3E0, d => { if (!ok(g(8)) && !ok(g(7)) && !ok(g(12))) return false; be(d, 0, ok(g(8)) ? (g(8) + 273.15) * 10 : 0); be(d, 2, ok(g(12)) ? (g(12) + 273.15) * 10 : 0); be(d, 6, ok(g(7)) ? (g(7) + 273.15) * 10 : 0); return true; });
     put(0x3E1, d => { if (!ok(g(5))) return false; be(d, 4, g(5) * 10); return true; });
     put(0x3E9, d => { if (!ok(g(4))) return false; be(d, 4, g(4) * 1000); return true; });
+    if (L.hasGps) Object.assign(gpsStatus, { fix: !isNaN(L.lat[i]) ? 1 : 0, lat: L.lat[i], lon: L.lon[i], lap: L.lap[i], t: now, gates: 1,
+      cur: (() => { const l = L.laps.find(q => i >= q.i0 && i < q.i1); return l ? Math.round((L.t[i] - L.t[l.i0]) * 1000) : 0; })(),
+      last: (() => { const p = L.laps.filter(q => q.i1 <= i); return p.length ? p[p.length - 1].ms : 0; })(),
+      best: (() => { const p = L.laps.filter(q => q.i1 <= i); return p.length ? Math.min(...p.map(q => q.ms)) : 0; })(), delta: null, progress: 0 });
     gaugeStatus.kmh = ok(g(15)) ? g(15) : null; gaugeStatus.gear = ok(g(16)) ? g(16) : null; gaugeStatus.t = now;
     gaugeStatus.warn = L.w[i];
   }
@@ -341,7 +406,7 @@ const Logs = (() => {
     seg("lgMode", "m", "mode"); seg("lgRate", "r", "rate");
     const chips = () => { $l("lgCh").innerHTML = CH.map((c, i) => { const on = cfg.ch & (1 << i); return `<span class="chipck${on ? " sel" : ""}" data-lc="${i}" style="${on ? "color:var(--amber)" : ""}"><span class="dx${on ? " on" : ""}"></span>${c.n}</span>`; }).join("");
       document.querySelectorAll("[data-lc]").forEach(e => e.onclick = () => { cfg.ch ^= 1 << +e.dataset.lc; if (!cfg.ch) cfg.ch = 1; chips(); est(); }); };
-    const est = () => { const n = CH.filter((_, i) => cfg.ch & (1 << i)).length, perMin = (4 + n * 2 + 2) * cfg.rate * 60, s20 = perMin * 20;
+    const est = () => { const perMin = rowSizeOf(cfg.ch) * cfg.rate * 60, s20 = perMin * 20;
       $l("lgEst").innerHTML = `About <span style="color:var(--pink)">${fmtSize(perMin)}</span> per minute. A 20 minute session is ${fmtSize(s20)}, roughly ${Math.max(1, Math.round(s20 / 30000))} s to download.`; };
     chips(); est();
     $l("lgSave").onclick = async () => {

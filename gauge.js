@@ -277,6 +277,21 @@ const GaugeView = (() => {
         s.log = !(gaugeStatus.log & 1) ? 0 : (gaugeStatus.log & 2) ? 2 : 1;
         break;
       }
+      case 10: {         // lap timer (gauge GPS)
+        s.title = "LAP";
+        const fix = gpsStatus.fix && performance.now() - gpsStatus.t < 2000;
+        s.seg = ring(0, 255, fix && gpsStatus.lap > 0 && gpsStatus.progress > 0 ? gpsStatus.progress : null, null, 0, 0);
+        const lt = ms => !ms ? "--" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${Math.floor(ms / 100) % 10}`;
+        s.big = 10; s.rowCell = 2.5;
+        s.centre = fix && gpsStatus.lap > 0 ? lt(gpsStatus.cur) : "--";
+        if (!fix) s.unit = "NO GPS";
+        else if (!gpsStatus.gates) s.unit = "HOLD = S/F";
+        else if (!gpsStatus.lap) s.unit = "CROSS S/F";
+        else if (gpsStatus.delta !== null) { const d = gpsStatus.delta; s.unit = (d < 0 ? "-" : "+") + (Math.abs(d) / 1000).toFixed(2); s.cw = d > 0; }
+        else s.unit = "LAP " + gpsStatus.lap;
+        s.rows = [["LAST", lt(gpsStatus.last), false], ["BEST", lt(gpsStatus.best), false]];
+        break;
+      }
       case 9: {          // alerts
         s.mode = "alerts";
         s.lines = (diagWarns || []).slice(0, 3).map(w => `${w.name}  ${w.val} ${w.unit}`.replace("°", "*"));
@@ -310,9 +325,10 @@ const GaugeView = (() => {
       drawRing(s.seg);
       s.lbl.forEach((l, k) => { const a = rad(135 + k * 60); drawText(l, CX + LR * Math.cos(a), CY + LR * Math.sin(a), CELL_LABEL, C_LIT, 1); });
       drawTitle(s.title, false);
-      drawText(s.centre, CX, NY, CELL_BIG, s.cw ? C_WARN : C_LIT, 1);
+      drawText(s.centre, CX, NY, s.big || CELL_BIG, s.cw ? C_WARN : C_LIT, 1);
       drawText(s.unit, CX, UNIT_Y, CELL_MED, C_LIT, 1);
-      s.rows.forEach((r, i) => { const y = i ? ROW2_Y : ROW1_Y; drawText(r[0], gLeftEdge, y, CELL_MED, C_LIT, 0); drawText(r[1], gRightEdge, y, CELL_MED, r[2] ? C_WARN : C_LIT, 2); });
+      const rc = s.rowCell || CELL_MED;
+      s.rows.forEach((r, i) => { const y = i ? ROW2_Y : ROW1_Y; drawText(r[0], gLeftEdge, y, rc, C_LIT, 0); drawText(r[1], gRightEdge, y, rc, r[2] ? C_WARN : C_LIT, 2); });
     } else if (s.mode === "monitor") {
       drawTitle("MONITOR", false);
       s.mon.forEach((r, i) => { const y = gTitleY + TH + 34 + i * 40, c = r[3] ? C_WARN : C_LIT;

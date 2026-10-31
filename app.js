@@ -12,7 +12,8 @@ let dev = null, rxC = null, connected = false, userDisconnect = false, retryMs =
 let S = null;                                   // gauge settings
 const frames = {};                              // latest CAN data by ID: {data, t}
 const gaugeStatus = { kmh: null, gear: null, held: 0, sim: 0, warn: 0, dyno: 0, log: 0, t: 0 };
-let diagWarns = [];                             // active warnings from the gauge (Diag tab and gauge screen)
+let diagWarns = [];
+const gpsStatus = { fix: 0, sats: 0, lat: 0, lon: 0, kmh: 0, course: 0, lap: 0, cur: 0, last: 0, best: 0, delta: null, sector: 0, progress: 0, gates: 0, t: 0 };                             // active warnings from the gauge (Diag tab and gauge screen)
 
 // ---------------- Command channel ----------------
 let lineBuf = "", waiters = [], chain = Promise.resolve();
@@ -81,6 +82,12 @@ function onLive(e) {
     gaugeStatus.log = n >= 15 ? v.getUint8(14) : 0;
   } else if (type === 0x03) {
     Logs.onChunk(v);                             // log file download
+  } else if (type === 0x04 && n >= 37 && !replay) {   // GPS and lap timer
+    const d = v.getInt32(30, true);
+    Object.assign(gpsStatus, { fix: v.getUint8(2), sats: v.getUint8(3), lat: v.getInt32(4, true) / 1e7, lon: v.getInt32(8, true) / 1e7,
+      kmh: v.getUint16(12, true) / 10, course: v.getUint16(14, true) / 10, lap: v.getUint16(16, true), cur: v.getUint32(18, true),
+      last: v.getUint32(22, true), best: v.getUint32(26, true), delta: d === -2147483648 ? null : d, sector: v.getUint8(34),
+      progress: v.getUint8(35), gates: v.getUint8(36), t: now });
   }
 }
 
@@ -113,7 +120,7 @@ async function openLink() {
   lastWarnMask = -1;
 
   const info = await cmd({ cmd: "info" });
-  await cmd({ cmd: "time", t: Math.floor(Date.now() / 1000) }).catch(() => {});   // dates the logs
+  await cmd({ cmd: "time", t: Math.floor(Date.now() / 1000), tz: -new Date().getTimezoneOffset() }).catch(() => {});   // dates the logs
   $("devInfo").innerHTML = `<p>${info.name || "BPD Gauge"}</p>Firmware ${info.fw}, protocol ${info.proto}`;
   await subscribe();
   await loadSettings();
@@ -330,7 +337,7 @@ function refreshKeypad() {
 }
 
 // ---------------- Settings tab ----------------
-const PAGES = ["Boost", "Oil", "AFR", "RPM and speed", "Coolant", "Fuel pressure", "Intake air temp", "Monitor", "CAN keypad", "Alerts"];
+const PAGES = ["Boost", "Oil", "AFR", "RPM and speed", "Coolant", "Fuel pressure", "Intake air temp", "Monitor", "CAN keypad", "Alerts", "Lap timer"];
 const pTo = (k, u) => u == 0 ? k : u == 1 ? k / 100 : k / 6.894757, pFrom = (v, u) => u == 0 ? v : u == 1 ? v * 100 : v * 6.894757;
 const tTo = (c, u) => u == 1 ? c * 9 / 5 + 32 : c, tFrom = (v, u) => u == 1 ? (v - 32) * 5 / 9 : v;
 const WARN = [
@@ -356,6 +363,7 @@ async function loadSettings() {
   if (r.ok) { S = r.settings; renderSettings(); buildFaces(); }
   await Logs.refresh().catch(() => {});
   if ($("logSettings")) Logs.renderSettings($("logSettings"));
+  if ($("gpsBox")) Track.render($("gpsBox"));
 }
 
 function renderSettings() {
@@ -365,7 +373,7 @@ function renderSettings() {
   <div class="grid" style="margin-bottom:10px">${sel("numGears", "Gears", [[4, 4], [5, 5], [6, 6]])}${fld("fd", "Final drive")}</div>
   <div class="grid3" id="gearBox" style="margin-bottom:10px"></div>
   ${tyre("r", "Rear tyres (fitted now)")}${tyre("f", "Front tyres")}${tyre("c", "Tyres the ECU speed is calibrated for")}
-  ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels"])}
+  ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"])}
   <div style="height:10px"></div>${sel("gearSrc", "Gear display", ["Work out from RPM", "Use ECU gear", "Off"])}
   <h2>Units</h2>
   <div class="grid">${sel("pu", "Pressure", PU)}${sel("tu", "Temperature", TU)}${sel("su", "Speed", SU)}${sel("lam", "Mixture", ["AFR", "Lambda"])}
@@ -376,7 +384,8 @@ function renderSettings() {
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
   <div class="actions"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
-  <h2>Logging</h2><div id="logSettings"></div>`;
+  <h2>Logging</h2><div id="logSettings"></div>
+  <h2>GPS and lap timer</h2><div id="gpsBox"></div>`;
 
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
     .forEach(k => { if (S[k] !== undefined) $(k).value = S[k]; });

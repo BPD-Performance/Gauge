@@ -184,6 +184,10 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
   <div class="vbar"><button class="btn ghost" id="logMode" type="button">Overlay</button><button class="btn ghost" id="logReplay" type="button">Gauges: live</button><button class="btn ghost" id="logClose" type="button">Close</button></div>
   <div id="logRead"></div>
   <canvas id="logCv" aria-label="Log graph"></canvas>
+  <div id="logMapBox" hidden>
+   <canvas id="logMap" aria-label="GPS track map" style="display:block;width:100%;height:240px;border:2px solid var(--line);margin-top:8px;cursor:pointer"></canvas>
+   <div id="logLaps" style="margin-top:8px"></div>
+  </div>
   <div class="vbar">
    <button class="btn pink" id="logPlay" type="button">Play</button>
    <button class="btn ghost" data-sp="1" type="button">1x</button><button class="btn" data-sp="2" type="button">2x</button><button class="btn ghost" data-sp="4" type="button">4x</button>
@@ -235,5 +239,6 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 <script src="haltech.js"></script>
 <script src="gauge.js"></script>
 <script src="logs.js"></script>
+<script src="track.js"></script>
 <script src="app.js"></script>
 </body></html>
