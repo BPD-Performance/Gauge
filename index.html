@@ -34,7 +34,7 @@ nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px s
 nav button{background:none;border:0;font:10px/1.25 var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0}
 nav button[aria-selected=true]{background:var(--amber);color:var(--bg)}
 section[hidden],.row[hidden]{display:none}
-h2{font:16px var(--dot);margin:22px 0 8px;display:inline-block;background:var(--amber);color:var(--bg);padding:3px 12px}
+h2{font:16px var(--dot);margin:34px 0 10px;display:inline-block;background:var(--amber);color:var(--bg);padding:3px 12px}
 h2+*{clear:both}
 .lead{color:var(--amber2);font-size:.9rem;margin:0 0 10px}
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
@@ -89,11 +89,14 @@ input[type=checkbox]:checked,.dx.on{background-image:url("data:image/svg+xml,%3C
 .num{width:76px;min-height:34px;padding:4px 6px;text-align:right}
 .seg{display:flex;gap:6px}.seg .btn{min-height:36px;font-size:13px;flex:1}
 #logCv{display:block;width:100%;height:260px;border:2px solid var(--line);touch-action:none;cursor:col-resize}
-.vbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}.vbar .btn{min-height:36px;font-size:12px;padding:0 10px}
+.vbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}.vbar .btn{min-height:36px;font-size:12px;padding:0 10px}
 #logRead{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font:11px var(--dot);margin:8px 0}
 .pg{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font:14px var(--dot)}
 .mv{width:44px;height:44px;border:2px solid var(--line);background:var(--bg);color:var(--amber);font:inherit;border-radius:0}
-.actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:16px 0}
+.actions .btn{width:100%}
+.block{border-top:2px solid var(--line);margin-top:30px;padding-top:4px}
+.block>h2:first-child{margin-top:20px}
 #msg{font:13px var(--dot);color:var(--amber2);min-height:1.5em}
 pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px;font-size:.8rem;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .empty{background:var(--bg);border:2px dashed var(--line);padding:16px;color:var(--amber2);font:13px var(--dot)}
@@ -176,7 +179,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="list" id="warnList"><div class="empty">Connect to the gauge to see warnings.</div></div>
  <div class="actions"><button class="btn" id="ackBtn" type="button">Dismiss on gauge</button></div>
  <h2>Warning history</h2>
- <p class="lead">Every warning this phone has seen while connected, with the worst value reached. Kept on this phone.</p>
+ <p class="lead">Every warning this device has seen while connected, with the worst value reached. Kept on this device.</p>
  <div class="list" id="histList"></div>
  <div class="actions"><button class="btn ghost" id="histClear" type="button">Clear history</button></div>
  <h2>ECU trouble codes</h2>
@@ -196,11 +199,11 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="actions" style="margin:10px 0"><button class="btn ghost" id="logRefresh" type="button">Refresh</button><button class="btn ghost red" id="delAll" type="button">Delete all</button></div>
  <p class="lead" id="logMsg" role="status"></p>
  <div class="list" id="fileList"></div>
- <h2>On this phone</h2>
+ <h2>On this device</h2>
  <div class="list" id="localList"></div>
  <div id="viewer" hidden>
   <h2 id="logTitle">Log</h2>
-  <div class="vbar"><button class="btn ghost" id="logMode" type="button">Overlay</button><button class="btn ghost" id="logReplay" type="button">Gauges: live</button><button class="btn ghost" id="logClose" type="button">Close</button></div>
+  <div class="vbar"><button class="btn ghost" id="logMode" type="button">Overlay</button><button class="btn ghost" id="logReplay" type="button">Gauge tab: live</button><button class="btn ghost" id="logClose" type="button">Close</button></div>
   <div id="logRead"></div>
   <canvas id="logCv" aria-label="Log graph"></canvas>
   <div id="logMapBox" hidden>
@@ -214,7 +217,8 @@ details.sec[open]>summary .pm::before{content:"-"}
    <span id="logTime" style="margin-left:auto;font:14px var(--dot)">0:00.0</span>
   </div>
   <div id="logChips" class="chipgrid"></div>
-  <p class="lead">Drag the graph to move the cursor, pinch or scroll to zoom. Red marks show where a warning tripped. "Gauges: log" plays the log on the Gauge tab.</p>
+  <p class="lead">Drag the graph to move the cursor, pinch or scroll to zoom. Red marks show where a warning tripped.</p>
+  <p class="lead">"Gauge tab: live / log" chooses what the Gauge tab shows. On log, the gauge faces replay this log at the cursor (live data from the gauge is ignored), so pressing Play replays the session on your gauges. Switch back to live, or close the log, to return to live data.</p>
  </div>
 </section>
 

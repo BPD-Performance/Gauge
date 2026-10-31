@@ -155,13 +155,13 @@ const Logs = (() => {
     const cachedNames = new Set(cached.map(c => c.n));
     $l("fileList").innerHTML = connected && files.length ? files.map((f, i) => {
       const secs = (f.size - HDR) / rowSizeOf(f.ch) / (f.rate || 20);
-      return `<div class="frow" data-i="${i}"><div><div>${fmtDate(f.t0, f.n)}</div><div class="sm">${f.n}</div><div class="sm">${fmtDur(secs)}  ${fmtSize(f.size)}${cachedNames.has(f.n) ? "  ON PHONE" : ""}${f.open ? "  RECORDING" : ""}</div></div>
+      return `<div class="frow" data-i="${i}"><div><div>${fmtDate(f.t0, f.n)}</div><div class="sm">${f.n}</div><div class="sm">${fmtDur(secs)}  ${fmtSize(f.size)}${cachedNames.has(f.n) ? "  ON DEVICE" : ""}${f.open ? "  RECORDING" : ""}</div></div>
         <div class="fbtn"><button class="btn" data-open="${i}" type="button">Open</button><button class="btn ghost" data-csv="${i}" type="button">CSV</button>${f.open ? "" : `<button class="btn ghost red" data-del="${i}" type="button">Del</button>`}</div></div>`; }).join("")
       : `<div class="empty">${connected ? "No logs on the card." : "Not connected."}</div>`;
     const local = cached.filter(c => !files.find(f => f.n === c.n));
     $l("localList").innerHTML = local.length ? local.map(c => `<div class="frow"><div><div>${fmtDate(c.t0, c.n)}</div><div class="sm">${fmtSize(c.size)}</div></div>
       <div class="fbtn"><button class="btn" data-lopen="${c.n}" type="button">Open</button><button class="btn ghost" data-lcsv="${c.n}" type="button">CSV</button><button class="btn ghost red" data-ldel="${c.n}" type="button">Del</button></div></div>`).join("")
-      : `<div class="empty">Logs you open are kept here too, so they work without the gauge.</div>`;
+      : `<div class="empty">Logs you open are kept on this device too, so they work without the gauge.</div>`;
 
     document.querySelectorAll("[data-open]").forEach(b => b.onclick = () => openFile(files[+b.dataset.open], false));
     document.querySelectorAll("[data-csv]").forEach(b => b.onclick = () => openFile(files[+b.dataset.csv], true));
@@ -169,7 +169,7 @@ const Logs = (() => {
       const r = await cmd({ cmd: "rm", n: files[+b.dataset.del].n }); if (!r.ok) alert(r.err); refresh(); }));
     document.querySelectorAll("[data-lopen]").forEach(b => b.onclick = async () => showLog(await cacheGet(b.dataset.lopen)));
     document.querySelectorAll("[data-lcsv]").forEach(b => b.onclick = async () => exportCsv(await cacheGet(b.dataset.lcsv)));
-    document.querySelectorAll("[data-ldel]").forEach(b => b.onclick = () => confirmRow(b.closest(".frow"), "Remove from this phone?", async () => { await cacheDel(b.dataset.ldel); renderFiles(); }));
+    document.querySelectorAll("[data-ldel]").forEach(b => b.onclick = () => confirmRow(b.closest(".frow"), "Remove from this device?", async () => { await cacheDel(b.dataset.ldel); renderFiles(); }));
   }
 
   function confirmRow(row, text, yes) {
@@ -379,7 +379,7 @@ const Logs = (() => {
   }
   function setReplay(on) {
     replayOn = on;
-    $l("logReplay").textContent = on ? "Gauges: log" : "Gauges: live";
+    $l("logReplay").textContent = on ? "Gauge tab: log" : "Gauge tab: live";
     $l("logReplay").classList.toggle("pink", on);
     if (on && L) feedReplay(idxAt(cur)); else for (const k in frames) delete frames[k];
   }

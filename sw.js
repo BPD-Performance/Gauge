@@ -1,7 +1,7 @@
 // Keeps the app working with no internet (e.g. at the track). New versions load when online.
 // Map tiles are kept in their own cache ("bpd-tiles") that survives app updates; clear it from
 // the GPS section of the Setup tab.
-const CACHE = "bpd-gauge-v10";
+const CACHE = "bpd-gauge-v11";
 const TILES = "bpd-tiles";
 const FILES = ["./", "index.html", "app.js", "haltech.js", "gauge.js", "logs.js", "track.js", "bpddot.ttf", "logo-flames.png", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png", "leaflet/leaflet.js", "leaflet/leaflet.css",

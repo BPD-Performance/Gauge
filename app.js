@@ -641,7 +641,7 @@ async function pollWarns() {
   warnPollBusy = false;
 }
 $("ackBtn").onclick = () => cmd({ cmd: "ack" }).then(() => setTimeout(pollWarns, 300)).catch(e => alert(e.message));
-$("histClear").onclick = () => { if (confirm("Clear the warning history on this phone?")) { warnHist = {}; localStorage.removeItem("warnHist"); renderDiag(); } };
+$("histClear").onclick = () => { if (confirm("Clear the warning history on this device?")) { warnHist = {}; localStorage.removeItem("warnHist"); renderDiag(); } };
 
 // ---------------- Tabs and start-up ----------------
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {

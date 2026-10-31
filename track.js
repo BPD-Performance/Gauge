@@ -147,7 +147,7 @@ const Track = (() => {
     document.querySelectorAll("[data-gdel]").forEach(b => b.onclick = () => { const i = +b.dataset.gdel; if (i === 0) cur.g = []; else cur.g.splice(i, 1); renderGates(); draw(); });
   }
   function renderLib() {
-    $t("trkLib").innerHTML = lib.length ? lib.map((t, i) => `<div class="frow"><div><div>${t.name || "Unnamed"}</div><div class="sm">${t.g.length ? t.g.length - 1 + " sectors" : "no lines"}</div></div>
+    $t("trkLib").innerHTML = lib.length ? lib.map((t, i) => `<div class="frow"><div><div>${t.name || "Unnamed"}</div><div class="sm">${t.g.length ? (t.g.length - 1) + (t.g.length === 2 ? " sector" : " sectors") : "no lines"}</div></div>
       <div class="fbtn"><button class="btn" data-ledit="${i}" type="button">Edit</button><button class="btn pink" data-lsend="${i}" type="button">To gauge</button><button class="btn ghost" data-lexp="${i}" type="button">Export</button><button class="btn ghost red" data-ldel="${i}" type="button">Del</button></div></div>`).join("")
       : `<div class="empty">Saved tracks appear here.</div>`;
     document.querySelectorAll("[data-ledit]").forEach(b => b.onclick = () => { openTrack(+b.dataset.ledit); $t("trkName").scrollIntoView({ behavior: "smooth", block: "center" }); });
@@ -310,7 +310,7 @@ const Track = (() => {
         <p class="lead">Turning the GPS on uses the gauge's UART header, so the gauge restarts and its debug serial output stops. Turn the gauge's LAP page on in Setup, Gauge pages.</p>
         <div class="actions"><button class="btn pink" id="gpsSave" type="button">Save GPS settings to gauge</button></div>
       </div></details>
-      <label style="margin-top:12px">Track</label>
+      <div class="block"><h2>Track</h2>
       <p class="lead" id="trkEditing">New track. Give it a name, find the circuit or tap the map, then save it to the library.</p>
       <div class="grid"><div><label for="trkName">Name</label><input id="trkName" placeholder="Sandown"></div>
         <div><label for="trkWidth">Line width (m)</label><input id="trkWidth" class="num" style="width:100%" value="25" inputmode="numeric"></div></div>
@@ -319,9 +319,11 @@ const Track = (() => {
         <button class="btn ghost" id="trkLoad" type="button">Load from gauge</button>
         <button class="btn ghost" id="trkNew" type="button">New track</button>
       </div>
+      </div>
+      <div class="block"><h2>Timing lines</h2>
       <div class="seg" id="trkMode"><button class="btn" data-tm="sf" type="button">Tap = start/finish</button><button class="btn ghost" data-tm="sec" type="button">Tap = sector</button></div>
-      <label class="ck2" style="margin:8px 0"><input type="checkbox" id="trkRev"> Race direction is the other way (flips every line)</label>
-      <div class="grid" style="margin-bottom:8px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"><div><label for="trkView">Map view</label>
+      <label class="ck2" style="margin:14px 0"><input type="checkbox" id="trkRev"> Race direction is the other way (flips every line)</label>
+      <div class="grid" style="margin:14px 0 10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"><div><label for="trkView">Map view</label>
         <select id="trkView"><option value="hybrid">Hybrid (satellite + names)</option><option value="sat">Satellite</option><option value="street">Street map</option></select></div>
         <div id="trkTintBox"><label for="trkTint">Street map colour</label><select id="trkTint"><option value="1">Amber</option><option value="0">Normal</option></select></div></div>
       <div id="trkMap" class="trkmap"></div>
@@ -329,11 +331,14 @@ const Track = (() => {
       <p class="lead" id="trkMsg" role="status">Tap the map to place each line (it snaps to the outline if there is one). You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
       <div class="list" id="trkGates"></div>
       <div class="actions"><button class="btn pink" id="trkSend" type="button">Send track to gauge</button><button class="btn ghost" id="trkSave" type="button">Save to library</button><button class="btn ghost red" id="trkClr" type="button">Clear gauge track</button></div>
-      <label>Track library (this device)</label>
-      <div class="actions" style="margin:6px 0 10px"><button class="btn ghost" id="trkImport" type="button">Import track file</button><button class="btn ghost" id="trkExportAll" type="button">Export all</button>
+      </div>
+      <div class="block"><h2>Track library</h2>
+      <p class="lead">Saved on this device.</p>
+      <div class="actions"><button class="btn ghost" id="trkImport" type="button">Import track file</button><button class="btn ghost" id="trkExportAll" type="button">Export all</button>
         <input type="file" id="trkFile" accept=".json,.bpdtrack,.kml,.kmz,.gpx,.geojson,.csv,.txt" hidden></div>
       <p class="lead">Imports BPD track files, Google Earth KML/KMZ, GPX, GeoJSON and CSV. Draw each timing line from the left edge to the right edge of the track as you face the way you drive; name the start/finish "Start" or "S/F". CSV rows: name,lat1,lon1,lat2,lon2.</p>
-      <div class="list" id="trkLib"></div>`;
+      <div class="list" id="trkLib"></div>
+      </div>`;
     $t("gpsSave").onclick = async () => {
       try { const r = await cmd({ cmd: "gpsset", on: $t("gpsOn").checked ? 1 : 0, pulse: $t("gpsPulse").checked ? 1 : 0, ppk: +$t("gpsPpk").value || 5000 });
         if (r.ok && confirm("Saved. Restart the gauge now so it takes effect?")) await cmd({ cmd: "restart" }).catch(() => {}); }
