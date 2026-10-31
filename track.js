@@ -43,13 +43,16 @@ const Track = (() => {
   // ---------------- Map (Leaflet + OpenStreetMap) ----------------
   // OpenStreetMap tiles under everything; the outline, lines and GPS dot are drawn on top.
   // Tiles you've looked at are kept by the service worker, so the map works offline at the track.
-  let map = null, layer = null, gpsDot = null, liveTimer = null;
+  let map = null, layer = null, gpsDot = null, liveTimer = null, street = null, sat = null;
   const AMBER = "#FFB000", PINK = "#ED008C", PINK2 = "#FF7FC8";
 
   function ensureMap() {
     if (map || !window.L || !$t("trkMap")) return map;
     map = L.map("trkMap", { zoomControl: true, attributionControl: true, worldCopyJump: true }).setView([-25.5, 134], 4);   // Australia until we know where you are
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, maxNativeZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
+    sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 20, maxNativeZoom: 19, attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" });
+    (localStorage.getItem("mapLayer") === "street" ? street : sat).addTo(map);
     layer = L.layerGroup().addTo(map);
     map.on("click", e => tapAt(e.latlng.lat, e.latlng.lng));
     applyTint();
@@ -57,7 +60,15 @@ const Track = (() => {
     liveTimer = setInterval(() => { if (map && document.getElementById("trkMap")) drawGps(); else clearInterval(liveTimer); }, 1000);
     return map;
   }
-  function applyTint() { const m = $t("trkMap"); if (m) m.classList.toggle("amber", localStorage.getItem("mapTint") !== "0"); }
+  // Amber tint only suits the street map; satellite stays in natural colours
+  function applyTint() { const m = $t("trkMap"); if (m) m.classList.toggle("amber", localStorage.getItem("mapLayer") === "street" && localStorage.getItem("mapTint") !== "0"); }
+  function setLayer(which) {
+    localStorage.setItem("mapLayer", which);
+    if (map) { map.removeLayer(which === "street" ? sat : street); (which === "street" ? street : sat).addTo(map); }
+    if ($t("trkLayer")) $t("trkLayer").textContent = which === "street" ? "Satellite" : "Street map";
+    if ($t("trkTint")) $t("trkTint").hidden = which !== "street";
+    applyTint();
+  }
 
   function allPts() {
     const pts = [];
@@ -166,7 +177,7 @@ const Track = (() => {
       <div class="seg" id="trkMode"><button class="btn" data-tm="sf" type="button">Tap = start/finish</button><button class="btn ghost" data-tm="sec" type="button">Tap = sector</button></div>
       <label class="ck2" style="margin:8px 0"><input type="checkbox" id="trkRev"> Race direction is the other way</label>
       <div id="trkMap" class="trkmap"></div>
-      <div class="actions" style="margin:8px 0"><button class="btn ghost" id="trkTint" type="button">Map colour</button><button class="btn ghost" id="trkMe" type="button">Go to me</button><button class="btn ghost red" id="trkTiles" type="button">Clear saved maps</button></div>
+      <div class="actions" style="margin:8px 0"><button class="btn ghost" id="trkLayer" type="button">Street map</button><button class="btn ghost" id="trkTint" type="button">Map colour</button><button class="btn ghost" id="trkMe" type="button">Go to me</button><button class="btn ghost red" id="trkTiles" type="button">Clear saved maps</button></div>
       <p class="lead" id="trkMsg" role="status">Tap the map to place each line (it snaps to the outline if there is one). You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
       <div class="list" id="trkGates"></div>
       <div class="actions"><button class="btn pink" id="trkSend" type="button">Send to gauge</button><button class="btn ghost" id="trkSave" type="button">Save to library</button><button class="btn ghost red" id="trkClr" type="button">Clear gauge track</button></div>
@@ -180,6 +191,7 @@ const Track = (() => {
     $t("trkFind").onclick = async () => { try { const [la, lo] = await herePos(); await findOutline(la, lo); } catch (e) { $t("trkMsg").textContent = "No position: " + e.message; } };
     $t("trkLoad").onclick = async () => { try { const r = await cmd({ cmd: "trkget" }); if (r.ok) { cur = { name: r.track.name, g: r.track.g, outline: cur.outline }; $t("trkName").value = cur.name; fitView(); renderGates(); draw(); } } catch (e) { alert(e.message); } };
     $t("trkMode").querySelectorAll("button").forEach(b => b.onclick = () => { mode = b.dataset.tm; $t("trkMode").querySelectorAll("button").forEach(o => o.classList.toggle("ghost", o !== b)); });
+    $t("trkLayer").onclick = () => setLayer(localStorage.getItem("mapLayer") === "street" ? "sat" : "street");
     $t("trkTint").onclick = () => { localStorage.setItem("mapTint", localStorage.getItem("mapTint") === "0" ? "1" : "0"); applyTint(); };
     $t("trkMe").onclick = async () => { try { const [la, lo] = await herePos(); ensureMap(); map.setView([la, lo], 16); } catch (e) { $t("trkMsg").textContent = "No position: " + e.message; } };
     $t("trkTiles").onclick = async () => { if (confirm("Delete the map tiles saved on this device? They download again next time you look at an area.")) { await caches.delete("bpd-tiles"); $t("trkMsg").textContent = "Saved maps cleared."; } };
@@ -187,7 +199,7 @@ const Track = (() => {
     $t("trkSave").onclick = () => { cur.name = $t("trkName").value || "Track"; const i = lib.findIndex(t => t.name === cur.name); const copy = JSON.parse(JSON.stringify(cur)); if (i >= 0) lib[i] = copy; else lib.push(copy); saveLib(); renderLib(); $t("trkMsg").textContent = "Saved on this device."; };
     $t("trkClr").onclick = async () => { if (confirm("Clear the track on the gauge?")) { await cmd({ cmd: "trkclr" }).catch(e => alert(e.message)); } };
     map = null; clearInterval(liveTimer);
-    setTimeout(() => { ensureMap(); fitView(); draw(); }, 0);
+    setTimeout(() => { ensureMap(); setLayer(localStorage.getItem("mapLayer") === "street" ? "street" : "sat"); fitView(); draw(); }, 0);
     renderGates(); renderLib(); loadGps();
   }
 

@@ -84,32 +84,42 @@ const Logs = (() => {
   }
 
   // ---------------- Download over Bluetooth ----------------
-  let dl = null;                                   // {buf: Uint8Array, got: Set of offsets}
+  // Bluetooth can drop packets when it's busy, so every byte is tracked and any gaps are
+  // asked for again, a piece at a time, instead of failing the whole download.
+  let dl = null;                                   // {buf, got: 1 per byte received}
   function onChunk(v) {                            // LIVE packet type 0x03
     if (!dl) return;
     const off = v.getUint32(2, true), n = v.byteLength - 6;
     if (off + n > dl.buf.length) return;
     dl.buf.set(new Uint8Array(v.buffer, v.byteOffset + 6, n), off);
-    dl.recv += n;
+    dl.got.fill(1, off, off + n);
+  }
+  const gaps = (o, len) => { const out = []; let s = -1;
+    for (let i = o; i < o + len; i++) { if (!dl.got[i]) { if (s < 0) s = i; } else if (s >= 0) { out.push([s, i - s]); s = -1; } }
+    if (s >= 0) out.push([s, o + len - s]); return out; };
+  async function fetchRange(name, o, len) {        // one request; returns bytes the gauge says it sent
+    const r = await cmd({ cmd: "rd", n: name, o, l: len });
+    if (!r.ok) throw new Error(r.err || "read failed");
+    await new Promise(res => setTimeout(res, 60));                 // let the last packets land
+    return r.l;
   }
   async function download(f, progress) {
-    const CHUNK = 8192;
-    dl = { buf: new Uint8Array(f.size), recv: 0 };
+    const CHUNK = 4096;
+    dl = { buf: new Uint8Array(f.size), got: new Uint8Array(f.size) };
     try {
-      for (let off = 0; off < f.size;) {
+      for (let off = 0; off < f.size; off += CHUNK) {
         const want = Math.min(CHUNK, f.size - off);
-        let ok = false;
-        for (let tries = 0; tries < 4 && !ok; tries++) {
-          dl.recv = 0;
-          const r = await cmd({ cmd: "rd", n: f.n, o: off, l: want });
-          if (!r.ok) throw new Error(r.err || "read failed");
-          await new Promise(res => setTimeout(res, 30));             // let the last packets land
-          ok = r.l === 0 || dl.recv >= r.l;
-          if (ok && r.l === 0) { off = f.size; break; }
-          if (ok) off += r.l;
+        let sent = want;
+        try { sent = await fetchRange(f.n, off, want); } catch (e) { if (!/no reply/.test(e.message)) throw e; }
+        if (sent === 0) break;                                       // end of file
+        const span = Math.min(want, sent || want);
+        for (let tries = 0; tries < 6; tries++) {                    // fill any holes
+          const missing = gaps(off, span);
+          if (!missing.length) break;
+          for (const [o, n] of missing) { try { await fetchRange(f.n, o, n); } catch (e) { if (!/no reply/.test(e.message)) throw e; } }
         }
-        if (!ok) throw new Error("Bluetooth dropped data, try again");
-        progress(Math.min(1, off / f.size));
+        if (gaps(off, span).length) throw new Error("Bluetooth kept dropping data. Move closer to the gauge and try again");
+        progress(Math.min(1, (off + want) / f.size));
       }
       return dl.buf.buffer;
     } finally { dl = null; }
@@ -397,23 +407,27 @@ const Logs = (() => {
       <div class="seg" id="lgRate"><button class="btn ghost" data-r="10" type="button">10/s</button><button class="btn ghost" data-r="20" type="button">20/s</button><button class="btn ghost" data-r="50" type="button">50/s</button></div>
       <div id="lgCh" style="margin-top:8px"></div>
       <div id="lgEst" class="lead" style="margin-top:6px"></div>
-      <div class="actions"><button class="btn pink" id="lgSave" type="button">Save logging</button></div>
-      <p id="lgMsg" class="lead"></p>`;
+      <p id="lgMsg" class="lead" role="status">Changes are sent to the gauge as you make them.</p>
+      <div class="actions"><button class="btn pink" id="lgSave" type="button">Save logging settings to gauge</button></div>`;
     ["st_rpm", "st_spd", "st_tps", "st_bst", "sp_eng", "sp_still"].forEach(k => { $l(k + "_on").checked = !!cfg[k + "_on"]; $l(k).value = k === "st_bst" ? +bstShown.toFixed(pu == 1 ? 2 : 0) : cfg[k]; });
     $l("lg_pre").value = cfg.pre; $l("lg_min").value = cfg.min; $l("lg_split").value = cfg.split; $l("lg_full").value = cfg.full;
     const seg = (boxId, attr, key) => { const sync = () => $l(boxId).querySelectorAll("button").forEach(b => b.classList.toggle("ghost", +b.dataset[attr] !== cfg[key]));
-      $l(boxId).querySelectorAll("button").forEach(b => b.onclick = () => { cfg[key] = +b.dataset[attr]; sync(); est(); }); sync(); };
+      $l(boxId).querySelectorAll("button").forEach(b => b.onclick = () => { cfg[key] = +b.dataset[attr]; sync(); est(); autoSave(); }); sync(); };
     seg("lgMode", "m", "mode"); seg("lgRate", "r", "rate");
     const chips = () => { $l("lgCh").innerHTML = CH.map((c, i) => { const on = cfg.ch & (1 << i); return `<span class="chipck${on ? " sel" : ""}" data-lc="${i}" style="${on ? "color:var(--amber)" : ""}"><span class="dx${on ? " on" : ""}"></span>${c.n}</span>`; }).join("");
-      document.querySelectorAll("[data-lc]").forEach(e => e.onclick = () => { cfg.ch ^= 1 << +e.dataset.lc; if (!cfg.ch) cfg.ch = 1; chips(); est(); }); };
+      document.querySelectorAll("[data-lc]").forEach(e => e.onclick = () => { cfg.ch ^= 1 << +e.dataset.lc; if (!cfg.ch) cfg.ch = 1; chips(); est(); autoSave(); }); };
     const est = () => { const perMin = rowSizeOf(cfg.ch) * cfg.rate * 60, s20 = perMin * 20;
       $l("lgEst").innerHTML = `About <span style="color:var(--pink)">${fmtSize(perMin)}</span> per minute. A 20 minute session is ${fmtSize(s20)}, roughly ${Math.max(1, Math.round(s20 / 30000))} s to download.`; };
+    // Send changes automatically, shortly after the last change (so typing a number sends once)
+    let saveTimer = null;
+    const autoSave = () => { clearTimeout(saveTimer); $l("lgMsg").textContent = "Sending…"; saveTimer = setTimeout(() => $l("lgSave").onclick(), 700); };
+    box.querySelectorAll("input, select").forEach(el => { el.addEventListener("change", autoSave); if (el.type !== "checkbox") el.addEventListener("input", autoSave); });
     chips(); est();
     $l("lgSave").onclick = async () => {
       const out = { cmd: "logset", mode: cfg.mode, rate: cfg.rate, ch: cfg.ch, pre: +$l("lg_pre").value, min: +$l("lg_min").value, split: +$l("lg_split").value, full: +$l("lg_full").value };
       ["st_rpm", "st_spd", "st_tps", "st_bst", "sp_eng", "sp_still"].forEach(k => { out[k + "_on"] = $l(k + "_on").checked ? 1 : 0; let v = parseFloat($l(k).value) || 0;
         if (k === "st_bst") v = pu == 0 ? v : pu == 1 ? v * 100 : v * 6.894757; out[k] = v; });
-      try { const r = await cmd(out); $l("lgMsg").textContent = r.ok ? "Saved to the gauge." : "Not saved: " + r.err; await refresh(); }
+      try { const r = await cmd(out); $l("lgMsg").textContent = r.ok ? `Saved to the gauge at ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" })}.` : "Not saved: " + r.err; await refresh(); }
       catch (e) { $l("lgMsg").textContent = "Not saved: " + e.message; }
     };
   }

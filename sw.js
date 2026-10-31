@@ -1,7 +1,7 @@
 // Keeps the app working with no internet (e.g. at the track). New versions load when online.
 // Map tiles are kept in their own cache ("bpd-tiles") that survives app updates; clear it from
 // the GPS section of the Setup tab.
-const CACHE = "bpd-gauge-v8";
+const CACHE = "bpd-gauge-v9";
 const TILES = "bpd-tiles";
 const FILES = ["./", "index.html", "app.js", "haltech.js", "gauge.js", "logs.js", "track.js", "bpddot.ttf", "logo-flames.png", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png", "leaflet/leaflet.js", "leaflet/leaflet.css",
@@ -14,7 +14,7 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
   const url = e.request.url;
-  if (url.includes("tile.openstreetmap.org/")) {              // map tiles: saved copy first, download if new
+  if (url.includes("tile.openstreetmap.org/") || url.includes("arcgisonline.com/ArcGIS/rest/services/World_Imagery")) {              // map tiles: saved copy first, download if new
     e.respondWith(caches.open(TILES).then(c => c.match(e.request).then(hit => hit || fetch(e.request).then(r => { if (r.ok) c.put(e.request, r.clone()); return r; }))));
     return;
   }
