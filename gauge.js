@@ -314,7 +314,6 @@ const GaugeView = (() => {
     const s = buildPage(type, d);
     const now = performance.now();
     s.pressed = now < flashUntil ? flashBtn : 0;
-    s.dyno = gaugeStatus.dyno ? 1 : 0;
     s.rec = (gaugeStatus.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
     s.shift = st("w_shift_on") && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
     const sig = type + JSON.stringify(s);
@@ -354,8 +353,7 @@ const GaugeView = (() => {
       drawText("DTC  --", CX, y + 1, CELL_SMALL, C_BG, 1); y += 40;
       drawText("NOT LINKED YET", CX, y, CELL_SMALL, C_LIT, 1);
     }
-    if (s.dyno) { fillRect(CX - 40, BPD_Y - 12, CX + 39, BPD_Y + 11, C_BRAND); drawText("DYNO", CX, BPD_Y, CELL_LABEL, C_BG, 1); }
-    else drawText("BPD", CX, BPD_Y, CELL_LABEL, C_BRAND, 1);
+    drawText("BPD", CX, BPD_Y, CELL_LABEL, C_BRAND, 1);
     if (s.rec) {
       const rx = CX - 48, dx = rx - textW("REC", CELL_LABEL) - 14;
       drawText("REC", rx, BPD_Y, CELL_LABEL, C_WARN, 2);

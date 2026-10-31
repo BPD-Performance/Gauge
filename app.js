@@ -284,7 +284,6 @@ function refreshLive() {
   if (gr) chips.push(`<span class="chip">Gear ${gr[0]}</span>`);
   if (gaugeStatus.log & 2) chips.push(`<span class="chip alarm">REC</span>`);
   if (gaugeStatus.sim) chips.push(`<span class="chip alarm">SIMULATOR (fake data)</span>`);
-  if (gaugeStatus.dyno) chips.push(`<span class="chip pink">DYNO MODE</span>`);
   if (gaugeStatus.warn) chips.push(`<span class="chip alarm">WARNING</span>`);
   $("simBtn").textContent = gaugeStatus.sim ? "Stop simulator" : "Start simulator";
   $("statusChips").innerHTML = chips.join("");
@@ -399,9 +398,8 @@ function renderSettings() {
   <h2>Screen</h2>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
-  <div class="actions keep"><button class="btn" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
-  <h2>Logging</h2><div id="logSettings"></div>
-  <h2>GPS and lap timer</h2><div id="gpsBox"></div>`;
+  <div class="actions keep"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
+`;
   collapseSections($("settingsBody"));
 
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
@@ -645,17 +643,6 @@ async function pollWarns() {
 $("ackBtn").onclick = () => cmd({ cmd: "ack" }).then(() => setTimeout(pollWarns, 300)).catch(e => alert(e.message));
 $("histClear").onclick = () => { if (confirm("Clear the warning history on this phone?")) { warnHist = {}; localStorage.removeItem("warnHist"); renderDiag(); } };
 
-// ---------------- Dyno mode ----------------
-$("dynoBtn").onclick = async () => {
-  try { await cmd({ cmd: "dyno", on: gaugeStatus.dyno ? 0 : 1 }); } catch (e) { alert(e.message); }
-};
-function refreshDyno() {
-  const b = $("dynoBtn");
-  b.textContent = gaugeStatus.dyno ? "Turn off" : "Turn on";
-  b.classList.toggle("ghost", !gaugeStatus.dyno);
-  b.classList.toggle("pink", !!gaugeStatus.dyno);
-}
-
 // ---------------- Tabs and start-up ----------------
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
@@ -665,6 +652,7 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   liveTab = b.dataset.tab === "live";
   if (liveTab !== wasLive) subscribe().catch(() => {});
   if (b.dataset.tab === "logs") Logs.refresh();
+  if (b.dataset.tab === "lap") Track.redraw();
   if (gaugeTab) setTimeout(layoutFaces, 0);
   if (b.dataset.tab === "diag") renderDiag();
 });
@@ -675,10 +663,11 @@ buildPinned();
 buildChannelList();
 buildKeypad();
 setInterval(refreshLive, 100);                  // screen updates 10 times a second
-setInterval(() => { refreshDyno(); if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) pollWarns(); }, 1000);
+setInterval(() => { if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) pollWarns(); }, 1000);
 renderDiag();
 buildFaces();
 Logs.init();
+Track.render($("gpsBox"));                       // lap timer tab works without the gauge (map, library, import)
 setInterval(() => { if (connected && !document.getElementById("tab-logs").hidden) Logs.refresh(); }, 5000);
 requestAnimationFrame(faceLoop);
 autoConnect();

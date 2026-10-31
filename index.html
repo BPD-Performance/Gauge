@@ -30,8 +30,8 @@ header img{min-width:0;flex:0 1 auto;max-width:60%;object-fit:contain;object-pos
 @keyframes blink{50%{opacity:.35}}
 main{margin:0 auto;padding:12px 16px}
 main>section:not(#tab-gauge){max-width:620px;margin:0 auto}
-nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px solid var(--line);display:grid;grid-template-columns:repeat(7,1fr);z-index:2}
-nav button{background:none;border:0;font:11px var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px solid var(--line);display:grid;grid-template-columns:repeat(8,1fr);z-index:2}
+nav button{background:none;border:0;font:10px/1.25 var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0}
 nav button[aria-selected=true]{background:var(--amber);color:var(--bg)}
 section[hidden],.row[hidden]{display:none}
 h2{font:16px var(--dot);margin:22px 0 8px;display:inline-block;background:var(--amber);color:var(--bg);padding:3px 12px}
@@ -75,6 +75,8 @@ input[type=checkbox],.dx{appearance:none;-webkit-appearance:none;display:inline-
 input[type=checkbox]:checked,.dx.on{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' shape-rendering='crispEdges'%3E%3Cg fill='%23ED008C'%3E%3Crect x='12' y='3' width='3' height='3'/%3E%3Crect x='9' y='6' width='3' height='3'/%3E%3Crect x='0' y='9' width='3' height='3'/%3E%3Crect x='6' y='9' width='3' height='3'/%3E%3Crect x='3' y='12' width='3' height='3'/%3E%3C/g%3E%3C/svg%3E")}
 .chipck{display:inline-flex;align-items:center;gap:6px;font:12px var(--dot);border:2px solid var(--line);color:#6B4800;padding:4px 8px;margin:0 6px 6px 0;cursor:pointer;user-select:none}
 .chipck.sel{border-color:var(--amber)}
+.chipgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
+.chipgrid .chipck{margin:0;min-height:40px}
 .sm{font:11px var(--dot);color:var(--amber2)}
 .bar{height:14px;border:2px solid var(--amber)}.bar>div{height:100%;background:var(--amber)}
 .frow{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line);font:13px var(--dot)}
@@ -163,7 +165,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <section id="tab-keypad" hidden>
  <h2>CAN keypad B</h2>
- <p class="lead">Tap = one press. Press and hold for 1 second = latch the button on (red) until you tap it again. Use Rename buttons below to label them.</p>
+ <p class="lead">Tap = one press. Press and hold for 1 second = latch the button on (it turns yellow) until you tap it again. Use Rename buttons below to label them.</p>
  <div class="status" id="trimChips"></div>
  <div class="keypad" id="keypad"></div>
 </section>
@@ -188,6 +190,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 <section id="tab-logs" hidden>
  <h2>Recording</h2>
  <div class="card"><div class="switch"><p style="margin:0" id="recState"></p><button class="btn pink" id="recBtn" type="button">Start log</button></div></div>
+ <details class="sec" id="logSetSec"><summary><span>Logging settings</span><span class="pm" aria-hidden="true"></span></summary><div class="secbody"><div id="logSettings"><div class="empty">Connect to load the logging settings.</div></div></div></details>
  <h2>SD card</h2>
  <div id="logStore"></div>
  <div class="actions" style="margin:10px 0"><button class="btn ghost" id="logRefresh" type="button">Refresh</button><button class="btn ghost red" id="delAll" type="button">Delete all</button></div>
@@ -210,9 +213,14 @@ details.sec[open]>summary .pm::before{content:"-"}
    <button class="btn ghost" id="zOut" type="button" aria-label="Zoom out">-</button><button class="btn ghost" id="zIn" type="button" aria-label="Zoom in">+</button><button class="btn ghost" id="zFit" type="button">Fit</button>
    <span id="logTime" style="margin-left:auto;font:14px var(--dot)">0:00.0</span>
   </div>
-  <div id="logChips"></div>
+  <div id="logChips" class="chipgrid"></div>
   <p class="lead">Drag the graph to move the cursor, pinch or scroll to zoom. Red marks show where a warning tripped. "Gauges: log" plays the log on the Gauge tab.</p>
  </div>
+</section>
+
+<section id="tab-lap" hidden>
+ <h2>Lap timer</h2>
+ <div id="gpsBox"></div>
 </section>
 
 <section id="tab-settings" hidden>
@@ -227,11 +235,6 @@ details.sec[open]>summary .pm::before{content:"-"}
   <button class="btn ghost" id="forgetBtn" type="button">Disconnect</button>
   <button class="btn warn" id="defaultsBtn" type="button">Reset gauge settings</button>
  </div>
- <h2>Dyno mode</h2>
- <div class="card">
-  <div class="switch"><p style="margin:0">Dyno mode</p><button class="btn ghost" id="dynoBtn" type="button">Turn on</button></div>
-  <div class="lead" style="margin:8px 0 0">For the dyno, where the wheels turn but the car isn't going anywhere. Lets this app save settings to the gauge over Bluetooth while the wheels are turning. The gauge shows DYNO at the bottom while it's on. It turns itself off when the gauge restarts.</div>
- </div>
  <h2>Bench test</h2>
  <p class="lead">Makes the gauge generate realistic fake Haltech data (a 24 second loop: idle, a full-throttle run through 1st to 4th with boost, then idle). The gauge and this app behave as if the car is running. It switches off by itself on restart or if real ECU data appears, and keypad frames are never sent to the car while it runs. Boost + and − on the Keypad tab move the simulated target boost.</p>
  <button class="btn" id="simBtn" type="button">Start simulator</button>
@@ -245,8 +248,9 @@ details.sec[open]>summary .pm::before{content:"-"}
 <nav role="tablist">
  <button role="tab" aria-selected="true" data-tab="gauge">Gauge</button>
  <button role="tab" aria-selected="false" data-tab="live">Live</button>
- <button role="tab" aria-selected="false" data-tab="keypad">Keys</button>
+ <button role="tab" aria-selected="false" data-tab="keypad">CAN<br>keypad</button>
  <button role="tab" aria-selected="false" data-tab="logs">Logs</button>
+ <button role="tab" aria-selected="false" data-tab="lap">Lap<br>timer</button>
  <button role="tab" aria-selected="false" data-tab="diag">Diag</button>
  <button role="tab" aria-selected="false" data-tab="settings">Setup</button>
  <button role="tab" aria-selected="false" data-tab="device">Device</button>

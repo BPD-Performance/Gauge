@@ -6,16 +6,16 @@
 const Logs = (() => {
   // ---------------- Channels (same ids and scaling as the firmware) ----------------
   const CH = [
-    { n: "RPM", s: 1, k: "n", u: "RPM", c: "#FFB000" },        { n: "BOOST", s: 10, k: "p", c: "#ED008C" },
-    { n: "TGT BOOST", s: 10, k: "p", c: "#FF7FC8" },            { n: "AFR", s: 1000, k: "l", c: "#2EC4FF" },
-    { n: "TGT AFR", s: 1000, k: "l", c: "#9BE7FF" },            { n: "ETHANOL", s: 10, k: "n", u: "%", c: "#D4FF3A" },
-    { n: "OIL P", s: 10, k: "p", c: "#7CFF4F" },                { n: "OIL T", s: 10, k: "t", c: "#2EF0C0" },
-    { n: "WATER", s: 10, k: "t", c: "#E8E8E8" },                { n: "COOLANT P", s: 10, k: "p", c: "#A0A0A0" },
-    { n: "FUEL P", s: 10, k: "p", c: "#B98CFF" },               { n: "INJ DUTY", s: 10, k: "n", u: "%", c: "#FFD86B" },
-    { n: "IAT", s: 10, k: "t", c: "#FF7A1F" },                  { n: "BATT", s: 100, k: "n", u: "V", c: "#C9A0FF" },
-    { n: "THROTTLE", s: 10, k: "n", u: "%", c: "#00E5FF" },     { n: "SPEED", s: 10, k: "s", c: "#FFB38A" },
-    { n: "GEAR", s: 1, k: "g", u: "", c: "#A6FF8F" },           { n: "IGN ANGLE", s: 10, k: "n", u: "°", c: "#F2A0FF" },
-    { n: "GPS", s: 10, k: "s", c: "#4FFFE0" },                  // bit 18: GPS block (position, GPS speed, lap)
+    { n: "RPM", s: 1, k: "n", u: "RPM", c: "#FFB000" },                 { n: "BOOST", s: 10, k: "p", c: "#ED008C" },
+    { n: "TARGET BOOST", s: 10, k: "p", c: "#FF7FC8" },                  { n: "AFR", s: 1000, k: "l", c: "#2EC4FF" },
+    { n: "TARGET AFR", s: 1000, k: "l", c: "#9BE7FF" },                  { n: "ETHANOL", s: 10, k: "n", u: "%", c: "#D4FF3A" },
+    { n: "OIL PRESSURE", s: 10, k: "p", c: "#7CFF4F" },                  { n: "OIL TEMP", s: 10, k: "t", c: "#2EF0C0" },
+    { n: "COOLANT TEMP", s: 10, k: "t", c: "#E8E8E8" },                  { n: "COOLANT PRESSURE", s: 10, k: "p", c: "#A0A0A0" },
+    { n: "FUEL PRESSURE", s: 10, k: "p", c: "#B98CFF" },                 { n: "INJECTOR DUTY", s: 10, k: "n", u: "%", c: "#FFD86B" },
+    { n: "INTAKE AIR TEMP", s: 10, k: "t", c: "#FF7A1F" },               { n: "BATTERY", s: 100, k: "n", u: "V", c: "#C9A0FF" },
+    { n: "THROTTLE", s: 10, k: "n", u: "%", c: "#00E5FF" },              { n: "SPEED", s: 10, k: "s", c: "#FFB38A" },
+    { n: "GEAR", s: 1, k: "g", u: "", c: "#A6FF8F" },                    { n: "IGNITION ANGLE", s: 10, k: "n", u: "°", c: "#F2A0FF" },
+    { n: "GPS POSITION AND SPEED", s: 10, k: "s", c: "#4FFFE0" },        // bit 18: GPS block (position, GPS speed, lap)
   ];
   const NUM16 = 18, GPS_BIT = 18;
   const HDR = 32;
@@ -405,7 +405,7 @@ const Logs = (() => {
         <div class="lrow"><span>Card full</span><span><select id="lg_full" style="width:auto;min-height:36px"><option value="0">Stop logging</option><option value="1">Delete oldest</option></select></span></div></div>
       <label style="margin-top:10px">Channels and rate</label>
       <div class="seg" id="lgRate"><button class="btn ghost" data-r="10" type="button">10/s</button><button class="btn ghost" data-r="20" type="button">20/s</button><button class="btn ghost" data-r="50" type="button">50/s</button></div>
-      <div id="lgCh" style="margin-top:8px"></div>
+      <div id="lgCh" class="chipgrid" style="margin-top:8px"></div>
       <div id="lgEst" class="lead" style="margin-top:6px"></div>
       <p id="lgMsg" class="lead" role="status">Changes are sent to the gauge as you make them.</p>
       <div class="actions"><button class="btn pink" id="lgSave" type="button">Save logging settings to gauge</button></div>`;
