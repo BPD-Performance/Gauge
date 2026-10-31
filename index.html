@@ -118,6 +118,14 @@ details.sec[open]>summary{background:var(--amber);color:var(--bg)}
 details.sec>summary .pm::before{content:"+";font-size:20px}
 details.sec[open]>summary .pm::before{content:"-"}
 .secbody{padding:12px}
+.trkmap{height:360px;border:2px solid var(--line);background:#060300;z-index:0}
+#trkMap.amber .leaflet-tile-pane{filter:grayscale(1) invert(1) brightness(.75) sepia(1) saturate(2.2) hue-rotate(-12deg) contrast(1.1)}
+#trkMap.leaflet-container{background:#1F1400;font:12px var(--body)}
+#trkMap .leaflet-bar a{background:var(--bg);color:var(--amber);border-color:var(--line);font:18px var(--dot);border-radius:0}
+#trkMap .leaflet-bar{border:2px solid var(--amber);border-radius:0}
+#trkMap .leaflet-control-attribution{background:rgba(6,3,0,.8);color:var(--amber2);font:10px var(--body)}
+#trkMap .leaflet-control-attribution a{color:var(--amber)}
+.gateLbl{font:12px var(--dot);white-space:nowrap}
 .secbody>h2:first-child{margin-top:0}
 </style></head><body>
 
@@ -246,6 +254,8 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <script src="haltech.js"></script>
 <script src="gauge.js"></script>
+<link rel="stylesheet" href="leaflet/leaflet.css">
+<script src="leaflet/leaflet.js"></script>
 <script src="logs.js"></script>
 <script src="track.js"></script>
 <script src="app.js"></script>

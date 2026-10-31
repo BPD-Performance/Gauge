@@ -40,63 +40,80 @@ const Track = (() => {
     return new Promise((res, rej) => navigator.geolocation ? navigator.geolocation.getCurrentPosition(p => res([p.coords.latitude, p.coords.longitude]), e => rej(new Error(e.message)), { enableHighAccuracy: true, timeout: 15000 }) : rej(new Error("no location on this device")));
   }
 
-  // ---------------- Map drawing ----------------
+  // ---------------- Map (Leaflet + OpenStreetMap) ----------------
+  // OpenStreetMap tiles under everything; the outline, lines and GPS dot are drawn on top.
+  // Tiles you've looked at are kept by the service worker, so the map works offline at the track.
+  let map = null, layer = null, gpsDot = null, liveTimer = null;
+  const AMBER = "#FFB000", PINK = "#ED008C", PINK2 = "#FF7FC8";
+
+  function ensureMap() {
+    if (map || !window.L || !$t("trkMap")) return map;
+    map = L.map("trkMap", { zoomControl: true, attributionControl: true, worldCopyJump: true }).setView([-25.5, 134], 4);   // Australia until we know where you are
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    layer = L.layerGroup().addTo(map);
+    map.on("click", e => tapAt(e.latlng.lat, e.latlng.lng));
+    applyTint();
+    clearInterval(liveTimer);
+    liveTimer = setInterval(() => { if (map && document.getElementById("trkMap")) drawGps(); else clearInterval(liveTimer); }, 1000);
+    return map;
+  }
+  function applyTint() { const m = $t("trkMap"); if (m) m.classList.toggle("amber", localStorage.getItem("mapTint") !== "0"); }
+
   function allPts() {
     const pts = [];
     (cur.outline || []).forEach(w => w.forEach(p => pts.push(p)));
     cur.g.forEach(g => pts.push([g[0], g[1]]));
-    if (gpsStatus.fix) pts.push([gpsStatus.lat, gpsStatus.lon]);
     return pts;
   }
   function fitView() {
+    if (!ensureMap()) return;
     const pts = allPts();
-    if (!pts.length) { view = null; return; }
-    const lat0 = pts.reduce((a, p) => a + p[0], 0) / pts.length, lon0 = pts.reduce((a, p) => a + p[1], 0) / pts.length;
-    const P = proj(lat0, lon0);
-    let mx = 50;
-    pts.forEach(p => { const [x, y] = P.xy(p[0], p[1]); mx = Math.max(mx, Math.abs(x), Math.abs(y)); });
-    view = { P, scale: mx * 1.1 };
-  }
-  function draw() {
-    const c = $t("trkCv"), dpr = window.devicePixelRatio || 1, W = c.clientWidth * dpr, H = c.clientHeight * dpr;
-    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
-    const x = c.getContext("2d");
-    x.fillStyle = "#060300"; x.fillRect(0, 0, W, H);
-    if (!view) { x.fillStyle = "#C98A00"; x.font = `${13 * dpr}px "BPD Dot", monospace`; x.textAlign = "center"; x.fillText("FIND THE CIRCUIT OR LOAD A TRACK", W / 2, H / 2); return; }
-    const s = Math.min(W, H) / 2 / view.scale, toPx = (la, lo) => { const [mx, my] = view.P.xy(la, lo); return [W / 2 + mx * s, H / 2 - my * s]; };
-    x.strokeStyle = "#FFB000"; x.lineWidth = 3 * dpr; x.lineJoin = "round";
-    (cur.outline || []).forEach(w => { x.beginPath(); w.forEach((p, i) => { const [a, b] = toPx(p[0], p[1]); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); });
-    cur.g.forEach((g, i) => {
-      const [cx, cy] = toPx(g[0], g[1]), br = g[2] * Math.PI / 180, hw = g[3] / 2 * s;
-      const px = Math.cos(br), py = Math.sin(br);                  // across the track
-      x.strokeStyle = i ? "#FF7FC8" : "#ED008C"; x.lineWidth = 4 * dpr;
-      x.beginPath(); x.moveTo(cx - px * hw, cy - py * hw); x.lineTo(cx + px * hw, cy + py * hw); x.stroke();
-      x.beginPath(); x.moveTo(cx, cy); x.lineTo(cx + Math.sin(br) * 14 * dpr, cy - Math.cos(br) * 14 * dpr); x.stroke();   // direction of travel
-      x.fillStyle = x.strokeStyle; x.font = `${12 * dpr}px "BPD Dot", monospace`; x.textAlign = "left";
-      x.fillText(i ? "S" + i : "S/F", cx + 8 * dpr, cy - 8 * dpr);
-    });
-    if (gpsStatus.fix) { const [a, b] = toPx(gpsStatus.lat, gpsStatus.lon); x.fillStyle = "#2EC4FF"; x.beginPath(); x.arc(a, b, 5 * dpr, 0, 7); x.fill(); }
+    if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [20, 20], maxZoom: 17 });
+    else if (gpsStatus.fix) map.setView([gpsStatus.lat, gpsStatus.lon], 16);
   }
 
-  // Tap: place a line across the outline at the nearest point, facing along it
-  function tapAt(ev) {
-    if (!view) return;
-    const c = $t("trkCv"), r = c.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
-    const s = Math.min(c.width, c.height) / 2 / view.scale;
-    const mx = ((ev.clientX - r.left) * dpr - c.width / 2) / s, my = -((ev.clientY - r.top) * dpr - c.height / 2) / s;
+  function gateEnds(g) {                      // the two ends of a line, and the tip of its direction arrow
+    const P = proj(g[0], g[1]), b = g[2] * Math.PI / 180, hw = g[3] / 2;
+    const ax = Math.cos(b) * hw, ay = -Math.sin(b) * hw;           // across the direction of travel
+    return { a: P.ll(-ax, -ay), b: P.ll(ax, ay), tip: P.ll(Math.sin(b) * 12, Math.cos(b) * 12) };
+  }
+  function draw() {
+    if (!ensureMap()) return;
+    layer.clearLayers();
+    (cur.outline || []).forEach(w => L.polyline(w, { color: AMBER, weight: 4, opacity: 0.9, interactive: false }).addTo(layer));
+    cur.g.forEach((g, i) => {
+      const e = gateEnds(g), col = i ? PINK2 : PINK;
+      L.polyline([e.a, e.b], { color: col, weight: 5, interactive: false }).addTo(layer);
+      L.polyline([[g[0], g[1]], e.tip], { color: col, weight: 3, interactive: false }).addTo(layer);
+      L.marker([g[0], g[1]], { interactive: false, icon: L.divIcon({ className: "gateLbl", html: `<span style="color:${col}">${i ? "S" + i : "S/F"}</span>`, iconSize: [40, 16], iconAnchor: [-8, 20] }) }).addTo(layer);
+    });
+    gpsDot = null;
+    drawGps();
+  }
+  function drawGps() {
+    if (!map) return;
+    const live = gpsStatus.fix && performance.now() - gpsStatus.t < 3000;
+    if (!live) { if (gpsDot) { gpsDot.remove(); gpsDot = null; } return; }
+    if (!gpsDot) gpsDot = L.circleMarker([gpsStatus.lat, gpsStatus.lon], { radius: 6, color: "#2EC4FF", fillColor: "#2EC4FF", fillOpacity: 1, interactive: false }).addTo(map);
+    else gpsDot.setLatLng([gpsStatus.lat, gpsStatus.lon]);
+  }
+
+  // Tap: place a line across the outline at the nearest point, facing along it.
+  // Away from the outline, the line goes where you tapped, facing the same way as start/finish.
+  function tapAt(lat, lon) {
+    const P = proj(lat, lon);
     let best = null;
     (cur.outline || []).forEach(w => {
       for (let i = 1; i < w.length; i++) {
-        const [ax, ay] = view.P.xy(w[i - 1][0], w[i - 1][1]), [bx, by] = view.P.xy(w[i][0], w[i][1]);
+        const [ax, ay] = P.xy(w[i - 1][0], w[i - 1][1]), [bx, by] = P.xy(w[i][0], w[i][1]);
         const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy || 1;
-        const t = Math.max(0, Math.min(1, ((mx - ax) * dx + (my - ay) * dy) / L2));
-        const qx = ax + dx * t, qy = ay + dy * t, d = Math.hypot(mx - qx, my - qy);
+        const t = Math.max(0, Math.min(1, (-ax * dx - ay * dy) / L2));
+        const qx = ax + dx * t, qy = ay + dy * t, d = Math.hypot(qx, qy);
         if (!best || d < best.d) best = { d, qx, qy, br: (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360 };
       }
     });
-    let lat, lon, br = 0;
-    if (best && best.d < view.scale * 0.15) { [lat, lon] = view.P.ll(best.qx, best.qy); br = best.br; }
-    else { [lat, lon] = view.P.ll(mx, my); br = cur.g.length ? cur.g[0][2] : 0; }
+    let br = cur.g.length ? cur.g[0][2] : 0;
+    if (best && best.d < 40) { [lat, lon] = P.ll(best.qx, best.qy); br = best.br; }         // snap within 40 m
     if ($t("trkRev").checked) br = (br + 180) % 360;              // OSM ways may run against the race direction
     const gate = [+lat.toFixed(7), +lon.toFixed(7), +br.toFixed(1), +$t("trkWidth").value || 25];
     if (mode === "sf") { if (cur.g.length) cur.g[0] = gate; else cur.g.push(gate); }
@@ -148,8 +165,9 @@ const Track = (() => {
       </div>
       <div class="seg" id="trkMode"><button class="btn" data-tm="sf" type="button">Tap = start/finish</button><button class="btn ghost" data-tm="sec" type="button">Tap = sector</button></div>
       <label class="ck2" style="margin:8px 0"><input type="checkbox" id="trkRev"> Race direction is the other way</label>
-      <canvas id="trkCv" style="display:block;width:100%;height:320px;border:2px solid var(--line);touch-action:manipulation"></canvas>
-      <p class="lead" id="trkMsg" role="status">Tap the outline to place each line. You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
+      <div id="trkMap" class="trkmap"></div>
+      <div class="actions" style="margin:8px 0"><button class="btn ghost" id="trkTint" type="button">Map colour</button><button class="btn ghost" id="trkMe" type="button">Go to me</button><button class="btn ghost red" id="trkTiles" type="button">Clear saved maps</button></div>
+      <p class="lead" id="trkMsg" role="status">Tap the map to place each line (it snaps to the outline if there is one). You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
       <div class="list" id="trkGates"></div>
       <div class="actions"><button class="btn pink" id="trkSend" type="button">Send to gauge</button><button class="btn ghost" id="trkSave" type="button">Save to library</button><button class="btn ghost red" id="trkClr" type="button">Clear gauge track</button></div>
       <label>Track library (this device)</label>
@@ -162,12 +180,17 @@ const Track = (() => {
     $t("trkFind").onclick = async () => { try { const [la, lo] = await herePos(); await findOutline(la, lo); } catch (e) { $t("trkMsg").textContent = "No position: " + e.message; } };
     $t("trkLoad").onclick = async () => { try { const r = await cmd({ cmd: "trkget" }); if (r.ok) { cur = { name: r.track.name, g: r.track.g, outline: cur.outline }; $t("trkName").value = cur.name; fitView(); renderGates(); draw(); } } catch (e) { alert(e.message); } };
     $t("trkMode").querySelectorAll("button").forEach(b => b.onclick = () => { mode = b.dataset.tm; $t("trkMode").querySelectorAll("button").forEach(o => o.classList.toggle("ghost", o !== b)); });
-    $t("trkCv").onclick = tapAt;
+    $t("trkTint").onclick = () => { localStorage.setItem("mapTint", localStorage.getItem("mapTint") === "0" ? "1" : "0"); applyTint(); };
+    $t("trkMe").onclick = async () => { try { const [la, lo] = await herePos(); ensureMap(); map.setView([la, lo], 16); } catch (e) { $t("trkMsg").textContent = "No position: " + e.message; } };
+    $t("trkTiles").onclick = async () => { if (confirm("Delete the map tiles saved on this device? They download again next time you look at an area.")) { await caches.delete("bpd-tiles"); $t("trkMsg").textContent = "Saved maps cleared."; } };
     $t("trkSend").onclick = () => { cur.name = $t("trkName").value || "Track"; if (!cur.g.length) return alert("Place a start/finish line first."); send(cur); };
     $t("trkSave").onclick = () => { cur.name = $t("trkName").value || "Track"; const i = lib.findIndex(t => t.name === cur.name); const copy = JSON.parse(JSON.stringify(cur)); if (i >= 0) lib[i] = copy; else lib.push(copy); saveLib(); renderLib(); $t("trkMsg").textContent = "Saved on this device."; };
     $t("trkClr").onclick = async () => { if (confirm("Clear the track on the gauge?")) { await cmd({ cmd: "trkclr" }).catch(e => alert(e.message)); } };
-    fitView(); renderGates(); renderLib(); draw(); loadGps();
+    map = null; clearInterval(liveTimer);
+    setTimeout(() => { ensureMap(); fitView(); draw(); }, 0);
+    renderGates(); renderLib(); loadGps();
   }
 
-  return { render, redraw: () => { if ($t("trkCv")) draw(); } };
+  // Called when the GPS section is opened: Leaflet needs to re-measure a map that was hidden
+  return { render, redraw: () => { if (map) { map.invalidateSize(); if (!allPts().length && map.getZoom() < 6) fitView(); } } };
 })();
