@@ -58,6 +58,7 @@ input:focus,select:focus,button:focus-visible{outline:3px solid var(--pink);outl
 .pin{width:36px;height:36px;border:2px solid var(--line);background:var(--bg);font-size:1.1rem;color:var(--amber);border-radius:0}
 .pin[aria-pressed=true]{background:var(--amber);color:var(--bg);border-color:var(--amber)}
 .grp{font:12px var(--dot);padding:6px 12px;background:var(--dim);color:var(--amber)}
+.grp .sm{margin-left:8px}
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .key{min-height:72px;border:2px solid var(--amber);background:var(--bg);font:14px var(--dot);color:var(--amber);padding:6px;touch-action:manipulation;user-select:none;border-radius:0}
 .key small{display:block;color:var(--amber2);font-size:11px}
@@ -157,12 +158,19 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="status" id="statusChips"></div>
  <h2>Pinned</h2>
  <div id="pinned"></div>
+ <div class="actions"><button class="btn ghost" id="pinEdit" type="button">Choose pinned channels</button></div>
+ <div id="pinPick" hidden>
+  <p class="lead">Tick the channels to show at the top. Untick to remove them.</p>
+  <input id="pinSearch" placeholder="Search channels" style="margin-bottom:10px">
+  <div id="pinGrid" class="chipgrid"></div>
+  <div class="actions"><button class="btn pink" id="pinDone" type="button">Done</button><button class="btn ghost" id="pinNone" type="button">Clear all</button></div>
+ </div>
  <h2>All channels</h2>
  <div class="grid">
   <div><label for="search">Search</label><input id="search" placeholder="oil, boost, EGT"></div>
   <div><label for="rate">Update rate</label><select id="rate"><option value="5">5 per second</option><option value="10" selected>10 per second</option><option value="20">20 per second</option><option value="50">50 per second</option></select></div>
  </div>
- <div class="chk" style="margin-top:10px"><input type="checkbox" id="showAll"><label for="showAll" style="margin:0;color:var(--ink)">Show channels with no data</label></div>
+ <div class="chk" style="margin-top:10px"><input type="checkbox" id="showAll" checked><label for="showAll" style="margin:0;color:var(--ink)">Show channels with no data</label></div>
  <div class="list" id="channels"></div>
 </section>
 

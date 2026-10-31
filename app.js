@@ -235,16 +235,38 @@ function togglePin(key) { pins = pins.includes(key) ? pins.filter(k => k !== key
 function buildPinned() {
   $("pinned").innerHTML = pins.length
     ? `<div class="tiles">${pins.map(k => `<div class="tile" data-k="${k}"><div class="n">${channelName(k)}</div><span class="v">--</span><span class="u"></span></div>`).join("")}</div>`
-    : `<div class="empty">Tap ☆ next to any channel below to pin it here.</div>`;
+    : `<div class="empty">Nothing pinned. Use Choose pinned channels, or tap ☆ next to any channel below.</div>`;
 }
+
+// Pinned picker: every channel with a tick box
+function buildPinPicker() {
+  const q = $("pinSearch").value.trim().toLowerCase();
+  const all = [...DERIVED.map(d => ({ key: d.key, name: d.name })), ...H.map(c => ({ key: c.key, name: c.name }))];
+  $("pinGrid").innerHTML = all.filter(c => !q || c.name.toLowerCase().includes(q)).map(c => { const on = pins.includes(c.key);
+    return `<span class="chipck${on ? " sel" : ""}" data-pk="${c.key}" style="${on ? "color:var(--amber)" : ""}"><span class="dx${on ? " on" : ""}"></span>${c.name}</span>`; }).join("");
+  $("pinGrid").querySelectorAll("[data-pk]").forEach(e => e.onclick = () => { togglePin(e.dataset.pk); buildPinPicker(); });
+}
+$("pinEdit").onclick = () => { const show = $("pinPick").hidden; $("pinPick").hidden = !show; $("pinEdit").textContent = show ? "Hide channel picker" : "Choose pinned channels"; if (show) buildPinPicker(); };
+$("pinDone").onclick = () => { $("pinPick").hidden = true; $("pinEdit").textContent = "Choose pinned channels"; };
+$("pinNone").onclick = () => { if (confirm("Remove every pinned channel?")) { pins = []; savePins(); buildPinPicker(); } };
+$("pinSearch").oninput = buildPinPicker;
+
+// Show channels with no data: on by default, remembered
+$("showAll").checked = localStorage.getItem("showAll") !== "0";
+$("showAll").addEventListener("change", () => localStorage.setItem("showAll", $("showAll").checked ? "1" : "0"));
 
 function buildChannelList() {
   const groups = [{ title: "Gauge", items: DERIVED.map(d => ({ key: d.key, name: d.name })) }];
   let last = -1;
   H.forEach(c => {
-    if (c.id !== last) { groups.push({ title: "0x" + c.id.toString(16).toUpperCase(), items: [] }); last = c.id; }
+    if (c.id !== last) { groups.push({ id: c.id, items: [] }); last = c.id; }
     groups[groups.length - 1].items.push({ key: c.key, name: c.name });
   });
+  // Name each CAN frame by what's in it, with its ID after in small text
+  groups.forEach(g => { if (g.id === undefined) return;
+    const names = g.items.map(i => i.name);
+    g.title = names.slice(0, 3).join(", ") + (names.length > 3 ? ` and ${names.length - 3} more` : "") +
+      `<span class="sm">CAN ID 0x${g.id.toString(16).toUpperCase()}</span>`; });
   $("channels").innerHTML = groups.map(g => `<div class="grp" data-grp>${g.title}</div>` + g.items.map(i =>
     `<div class="row stale" data-k="${i.key}" data-name="${i.name.toLowerCase()}">
       <button class="pin" type="button" aria-pressed="false" aria-label="Pin ${i.name}" data-pin="${i.key}">☆</button>
@@ -336,7 +358,7 @@ function refreshKeypad() {
 }
 
 // ---------------- Settings tab ----------------
-const PAGES = ["Boost", "Oil", "AFR", "RPM and speed", "Coolant", "Fuel pressure", "Intake air temp", "Monitor", "CAN keypad", "Alerts", "Lap timer"];
+const PAGES = ["Boost", "Oil", "AFR", "RPM and speed", "Coolant", "Fuel pressure", "Intake air temp", "Monitor", "CAN keypad", "Alerts", "Lap timer", "Face"];
 const pTo = (k, u) => u == 0 ? k : u == 1 ? k / 100 : k / 6.894757, pFrom = (v, u) => u == 0 ? v : u == 1 ? v * 100 : v * 6.894757;
 const tTo = (c, u) => u == 1 ? c * 9 / 5 + 32 : c, tFrom = (v, u) => u == 1 ? (v - 32) * 5 / 9 : v;
 const WARN = [
