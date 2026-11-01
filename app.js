@@ -162,6 +162,7 @@ async function connectClicked() {
   try {
     if (!dev) {
       dev = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+      localStorage.setItem("gaugeId", dev.id);    // remembered for connecting automatically next time
       dev.addEventListener("gattserverdisconnected", onDisconnected);
     }
     await openLink();
@@ -257,9 +258,12 @@ $("pinDone").onclick = () => { $("pinPick").hidden = true; $("pinEdit").textCont
 $("pinNone").onclick = () => { if (confirm("Remove every pinned channel?")) { pins = []; savePins(); buildPinPicker(); } };
 $("pinSearch").oninput = buildPinPicker;
 
-// Show channels with no data: on by default, remembered
-$("showAll").checked = localStorage.getItem("showAll") !== "0";
-$("showAll").addEventListener("change", () => localStorage.setItem("showAll", $("showAll").checked ? "1" : "0"));
+// Which channels the Live list shows (remembered). "In use" learns as data arrives and is kept,
+// so channels that only change while driving (boost, speed) stay listed once they've been seen.
+const usedKeys = new Set(JSON.parse(localStorage.getItem("usedKeys") || "[]"));
+let usedDirty = false, usedSaved = 0;
+$("showMode").value = localStorage.getItem("showMode") || "used";
+$("showMode").addEventListener("change", () => localStorage.setItem("showMode", $("showMode").value));
 
 function buildChannelList() {
   const groups = [{ title: "Gauge", items: DERIVED.map(d => ({ key: d.key, name: d.name })) }];
@@ -297,13 +301,24 @@ function refreshLive() {
     t.querySelector(".u").textContent = r ? r[1] : "";
   });
   // Channel list
-  const q = $("search").value.trim().toLowerCase(), showAll = $("showAll").checked;
+  const q = $("search").value.trim().toLowerCase(), mode = $("showMode").value;
+  const now = performance.now();
+  let hiddenUnused = 0;
   for (const k in rowEls) {
     const row = rowEls[k], r = channelValue(k);
+    // A channel counts as "in use" once its raw value has been anything other than zero / off.
+    // Haltech sends every channel whether it's set up or not; unused ones stay at zero.
+    const c = H.find(x => x.key === k), f = c && frames[c.id];
+    if (c && f && now - f.t < 2000 && !usedKeys.has(k) && haltechRaw(f.data, c.from, c.to, c.sg) !== 0) { usedKeys.add(k); usedDirty = true; }
+    const unused = c && !usedKeys.has(k);
     row.querySelector(".v").textContent = r ? `${r[0]} ${r[1]}`.trim() : "--";
     row.classList.toggle("stale", !r);
-    row.hidden = (q && !row.dataset.name.includes(q)) || (!showAll && !r);
+    const hideForMode = mode === "used" ? (!r || unused) : mode === "data" ? !r : false;
+    if (mode === "used" && r && unused) hiddenUnused++;
+    row.hidden = (q && !row.dataset.name.includes(q)) || hideForMode;
   }
+  if (usedDirty && now - usedSaved > 5000) { usedSaved = now; usedDirty = false; localStorage.setItem("usedKeys", JSON.stringify([...usedKeys])); }
+  $("usedNote").textContent = mode === "used" ? (hiddenUnused ? `Hiding ${hiddenUnused} channels that have only ever read zero or off. Anything that changes shows up automatically.` : "") : "";
   // Status chips
   const chips = [];
   chips.push(`<span class="chip">${connected ? "Connected" : "Not connected"}</span>`);
@@ -715,6 +730,46 @@ setInterval(() => { if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) p
 renderDiag();
 buildFaces();
 Logs.init();
+
+// CAN keypad full screen: big buttons filling the screen, for use in the car
+$("kpFull").onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if ($("tab-keypad").requestFullscreen) $("tab-keypad").requestFullscreen().catch(() => {});
+};
+document.addEventListener("fullscreenchange", () => { $("kpFull").textContent = document.fullscreenElement === $("tab-keypad") ? "Exit full screen" : "Full screen"; });
+
+// Demo mode: made-up data whenever no gauge is connected
+$("demoOn").checked = localStorage.getItem("demoOn") === "1";
+const demoCheck = () => { if ($("demoOn").checked && !connected) Demo.start(); else Demo.stop(); };
+$("demoOn").onchange = () => { localStorage.setItem("demoOn", $("demoOn").checked ? "1" : "0"); demoCheck(); };
+setInterval(demoCheck, 1000);
+demoCheck();
+
+// Auto-connect: reconnect to the gauge this browser has already paired with
+$("autoConn").checked = localStorage.getItem("autoConn") !== "0";
+$("autoConn").onchange = () => localStorage.setItem("autoConn", $("autoConn").checked ? "1" : "0");
+async function autoConnect() {
+  if (!$("autoConn").checked || connected || !navigator.bluetooth || !navigator.bluetooth.getDevices) return;
+  try {
+    const list = await navigator.bluetooth.getDevices();
+    const saved = localStorage.getItem("gaugeId");
+    const d = list.find(x => x.id === saved) || list.find(x => /BPD/i.test(x.name || ""));
+    if (!d) return;
+    dev = d;
+    dev.addEventListener("gattserverdisconnected", onDisconnected);
+    setState("Looking for gauge…", false);
+    try { await openLink(); return; } catch { /* not in range yet: wait for it to advertise */ }
+    if (dev.watchAdvertisements) {
+      dev.addEventListener("advertisementreceived", async () => {
+        if (connected) return;
+        try { await dev.unwatchAdvertisements?.(); } catch {}
+        try { await openLink(); } catch { setState("Not connected", false); }
+      }, { once: true });
+      await dev.watchAdvertisements();
+    } else setState("Not connected", false);
+  } catch { setState("Not connected", false); }
+}
+autoConnect();
 $("startTab").value = localStorage.getItem("startTab") || "gauge";
 $("startTab").onchange = () => localStorage.setItem("startTab", $("startTab").value);
 { const t = document.querySelector(`nav button[data-tab="${$("startTab").value}"]`); if (t && $("startTab").value !== "gauge") setTimeout(() => t.click(), 0); }

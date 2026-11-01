@@ -117,6 +117,12 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 .wl .v{color:var(--warn);text-align:right}
 .wl small{grid-column:1/-1;color:var(--amber2);font-size:11px}
 .switch{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#tab-keypad:fullscreen{background:var(--bg);padding:10px;overflow:hidden;display:flex;flex-direction:column}
+#tab-keypad:fullscreen h2,#tab-keypad:fullscreen .lead,#tab-keypad:fullscreen #renameBtn{display:none}
+#tab-keypad:fullscreen .kfull{margin:0 0 8px}
+#tab-keypad:fullscreen .keypad{flex:1;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr}
+#tab-keypad:fullscreen .key{min-height:0;font-size:clamp(14px,3.2vh,28px)}
+@media (orientation:landscape){#tab-keypad:fullscreen .keypad{grid-template-columns:repeat(5,1fr)}}
 details.sec{margin:10px 0;border:2px solid var(--amber);background:var(--bg)}
 details.sec>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:12px;font:15px var(--dot);color:var(--amber);min-height:48px;user-select:none}
 details.sec>summary::-webkit-details-marker{display:none}
@@ -170,11 +176,14 @@ details.sec[open]>summary .pm::before{content:"-"}
   <div><label for="search">Search</label><input id="search" placeholder="oil, boost, EGT"></div>
   <div><label for="rate">Update rate</label><select id="rate"><option value="5">5 per second</option><option value="10" selected>10 per second</option><option value="20">20 per second</option><option value="50">50 per second</option></select></div>
  </div>
- <div class="chk" style="margin-top:10px"><input type="checkbox" id="showAll" checked><label for="showAll" style="margin:0;color:var(--ink)">Show channels with no data</label></div>
+ <div style="margin-top:10px"><label for="showMode">Show</label>
+  <select id="showMode"><option value="used">In use (auto-detected)</option><option value="data">All with data</option><option value="all">Everything</option></select></div>
+ <p class="lead" id="usedNote" style="margin-top:6px"></p>
  <div class="list" id="channels"></div>
 </section>
 
 <section id="tab-keypad" hidden>
+ <div class="actions kfull"><button class="btn" id="kpFull" type="button">Full screen</button></div>
  <h2>CAN keypad B</h2>
  <p class="lead">Tap = one press. Press and hold for 1 second = latch the button on (it turns yellow) until you tap it again. Use Rename buttons below to label them.</p>
  <div class="status" id="trimChips"></div>
@@ -253,6 +262,16 @@ details.sec[open]>summary .pm::before{content:"-"}
   <select id="startTab"><option value="gauge">Gauge</option><option value="keypad">CAN keypad</option><option value="live">Live</option><option value="lap">Lap timer</option><option value="logs">Logs</option></select>
   <div class="lead" style="margin:8px 0 0">Handy for a head unit: set it to Gauge (then use Full screen) or CAN keypad. Two devices can be connected to the gauge at the same time, for example the head unit and your phone.</div>
  </div>
+ <h2>Connecting</h2>
+ <div class="card">
+  <div class="lrow" style="border:0;padding:0"><label class="ck2"><input type="checkbox" id="autoConn"> Connect automatically when the app opens</label></div>
+  <div class="lead" style="margin:8px 0 0">After the first time you connect, the app looks for the gauge by itself each time it opens (needs a recent version of Chrome). If it can't, just tap Connect.</div>
+ </div>
+ <h2>Demo mode</h2>
+ <div class="card">
+  <div class="lrow" style="border:0;padding:0"><label class="ck2"><input type="checkbox" id="demoOn"> Show demo data when no gauge is connected</label></div>
+  <div class="lead" style="margin:8px 0 0">The app makes up realistic data by itself (idle, a full-throttle run with boost, then off the throttle) so you can try every page without the gauge. It stops as soon as a gauge connects.</div>
+ </div>
  <h2>Bench test</h2>
  <p class="lead">Makes the gauge generate realistic fake Haltech data (a 24 second loop: idle, a full-throttle run through 1st to 4th with boost, then idle). The gauge and this app behave as if the car is running. It switches off by itself on restart or if real ECU data appears, and keypad frames are never sent to the car while it runs. Boost + and − on the Keypad tab move the simulated target boost.</p>
  <button class="btn" id="simBtn" type="button">Start simulator</button>
@@ -265,10 +284,10 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <nav role="tablist">
  <button role="tab" aria-selected="true" data-tab="gauge">Gauge</button>
- <button role="tab" aria-selected="false" data-tab="live">Live</button>
  <button role="tab" aria-selected="false" data-tab="keypad">CAN<br>keypad</button>
- <button role="tab" aria-selected="false" data-tab="logs">Logs</button>
  <button role="tab" aria-selected="false" data-tab="lap">Lap<br>timer</button>
+ <button role="tab" aria-selected="false" data-tab="logs">Logs</button>
+ <button role="tab" aria-selected="false" data-tab="live">Live</button>
  <button role="tab" aria-selected="false" data-tab="diag">Diag</button>
  <button role="tab" aria-selected="false" data-tab="settings">Setup</button>
  <button role="tab" aria-selected="false" data-tab="device">Device</button>
@@ -276,6 +295,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <script src="haltech.js"></script>
 <script src="gauge.js"></script>
+<script src="demo.js"></script>
 <link rel="stylesheet" href="leaflet/leaflet.css">
 <script src="leaflet/leaflet.js"></script>
 <script src="logs.js"></script>
