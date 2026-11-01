@@ -313,7 +313,7 @@ const Track = (() => {
       <div class="block"><h2>Track</h2>
       <p class="lead msg" id="trkEditing">New track. Give it a name, find the circuit or tap the map, then save it to the library.</p>
       <div class="grid"><div><label for="trkName">Name</label><input id="trkName" placeholder="Sandown"></div>
-        <div><label for="trkWidth">Line width (m)</label><input id="trkWidth" class="num" style="width:100%" value="25" inputmode="numeric"></div></div>
+        <div><label for="trkWidth">Timing line width (m)</label><input id="trkWidth" style="text-align:right" value="25" inputmode="numeric"></div></div>
       <div class="actions" style="margin:10px 0">
         <button class="btn" id="trkFind" type="button">Find circuit here</button>
         <button class="btn ghost" id="trkLoad" type="button">Load from gauge</button>
@@ -321,6 +321,7 @@ const Track = (() => {
       </div>
       </div>
       <div class="block"><h2>Timing lines</h2>
+      <p class="lead">Each start/finish or sector line is an invisible line across the track. The timing line width is how long that line is, edge to edge: the GPS has to pass through it to count a lap or sector. Make it a bit wider than the track at that spot (25 m suits most circuits) so a wide line or GPS drift still counts, but not so wide that it catches another part of the track or the pit lane. It's set when you place a line, so change it before tapping.</p>
       <div class="seg" id="trkMode"><button class="btn" data-tm="sf" type="button">Tap = start/finish</button><button class="btn ghost" data-tm="sec" type="button">Tap = sector</button></div>
       <label class="ck2" style="margin:14px 0"><input type="checkbox" id="trkRev"> Race direction is the other way (flips every line)</label>
       <div class="grid" style="margin:14px 0 10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"><div><label for="trkView">Map view</label>
