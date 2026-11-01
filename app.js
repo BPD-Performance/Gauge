@@ -32,8 +32,13 @@ function onTx(e) {
     lineBuf = lineBuf.slice(i + 1);
     if (!line) continue;
     logConsole("◀", line);
-    const w = waiters.shift();
-    if (w) { clearTimeout(w.timer); try { w.resolve(JSON.parse(line)); } catch { w.resolve({ ok: false, err: "bad reply" }); } }
+    let r; try { r = JSON.parse(line); } catch { r = { ok: false, err: "bad reply" }; }
+    // Replies carry the id of the command they answer. With two apps connected (e.g. a phone and
+    // the head unit) both hear every reply, so anything that isn't ours is ignored.
+    let w;
+    if (r && r.id !== undefined) { const i = waiters.findIndex(x => x.id === r.id); if (i < 0) continue; w = waiters.splice(i, 1)[0]; delete r.id; }
+    else w = waiters.shift();                     // older gauge firmware without ids
+    if (w) { clearTimeout(w.timer); w.resolve(r); }
   }
 }
 
@@ -46,9 +51,10 @@ async function writeText(text) {
 function cmd(obj) {
   const p = chain.then(() => new Promise(async (resolve, reject) => {
     if (!connected) return reject(new Error("not connected"));
-    const text = typeof obj === "string" ? obj : JSON.stringify(obj);
+    const id = Math.floor(Math.random() * 1e9) + 1;
+    const text = typeof obj === "string" ? obj : JSON.stringify({ ...obj, id });
     const timer = setTimeout(() => { waiters = waiters.filter(w => w.timer !== timer); reject(new Error("no reply")); }, 6000);
-    waiters.push({ resolve, timer });
+    waiters.push({ resolve, timer, id: typeof obj === "string" ? undefined : id });
     logConsole("▶", text);
     try { await writeText(text); } catch (err) { clearTimeout(timer); waiters.pop(); reject(err); }
   }));
@@ -403,6 +409,8 @@ function collapseSections(box) {
   });
 }
 
+const SHIFT_COLOURS = [["Amber", "#FFB000"], ["Red", "#FF3B1F"], ["BPD pink", "#ED008C"], ["Blue", "#2EC4FF"], ["Green", "#7CFF4F"], ["White", "#FFFFFF"]];
+
 function renderSettings() {
   const tyre = (p, title) => `<div class="card"><p>${title}</p><div class="grid3">${fld(p + "w", "Width")}${fld(p + "a", "Profile")}${fld(p + "r", "Rim (in)")}</div></div>`;
   $("settingsBody").innerHTML = `
@@ -420,8 +428,23 @@ function renderSettings() {
   <h2>Screen</h2>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
+  <div class="list" style="margin-top:12px">
+   <div class="lrow"><label class="ck2"><input type="checkbox" id="face_popup"> Show warning popups over the Face page</label></div>
+   <div class="lrow"><label class="ck2"><input type="checkbox" id="shift_show"> Flash the shift light ring</label></div>
+   <div class="lrow"><span>Shift light colour</span><span style="display:flex;gap:8px;align-items:center">
+     <select id="shift_pre" style="width:auto;min-height:36px">${SHIFT_COLOURS.map(c => `<option value="${c[1]}">${c[0]}</option>`).join("")}<option value="custom">Custom</option></select>
+     <input type="color" id="shift_rgb" style="width:46px;min-height:36px;padding:2px"></span></div>
+  </div>
   <div class="actions keep"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
 `;
+  // Face popup and shift light (older gauge firmware doesn't send these, so default them)
+  $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;
+  $("shift_show").checked = S.shift_show === undefined ? true : !!S.shift_show;
+  const hex = "#" + ((S.shift_rgb === undefined ? 0xFFB000 : S.shift_rgb) >>> 0).toString(16).padStart(6, "0").toUpperCase();
+  $("shift_rgb").value = hex;
+  $("shift_pre").value = SHIFT_COLOURS.some(c => c[1] === hex) ? hex : "custom";
+  $("shift_pre").onchange = () => { if ($("shift_pre").value !== "custom") $("shift_rgb").value = $("shift_pre").value; };
+  $("shift_rgb").oninput = () => { const v = $("shift_rgb").value.toUpperCase(); $("shift_pre").value = SHIFT_COLOURS.some(c => c[1] === v) ? v : "custom"; };
   collapseSections($("settingsBody"));
 
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
@@ -459,6 +482,9 @@ function readForm() {
   ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "stoich", "bright"].forEach(k => S[k] = parseFloat($(k).value));
   ["numGears", "spdSrc", "gearSrc", "lam", "flex", "tachmax", "acycle"].forEach(k => S[k] = +$(k).value);
   for (let i = 1; i <= 6; i++) if ($("g" + i)) S["g" + i] = parseFloat($("g" + i).value);
+  S.face_popup = $("face_popup").checked ? 1 : 0;
+  S.shift_show = $("shift_show").checked ? 1 : 0;
+  S.shift_rgb = parseInt($("shift_rgb").value.slice(1), 16);
   readWarns();
 }
 
@@ -689,6 +715,9 @@ setInterval(() => { if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) p
 renderDiag();
 buildFaces();
 Logs.init();
+$("startTab").value = localStorage.getItem("startTab") || "gauge";
+$("startTab").onchange = () => localStorage.setItem("startTab", $("startTab").value);
+{ const t = document.querySelector(`nav button[data-tab="${$("startTab").value}"]`); if (t && $("startTab").value !== "gauge") setTimeout(() => t.click(), 0); }
 Track.render($("gpsBox"));                       // lap timer tab works without the gauge (map, library, import)
 setInterval(() => { if (connected && !document.getElementById("tab-logs").hidden) Logs.refresh(); }, 5000);
 requestAnimationFrame(faceLoop);

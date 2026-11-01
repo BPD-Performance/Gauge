@@ -141,7 +141,7 @@ const GaugeView = (() => {
     const a = fr(0x360), b = fr(0x361), c = fr(0x362), l = fr(0x368), t = fr(0x372), e = fr(0x3E0), e1 = fr(0x3E1), tl = fr(0x3E9);
     const baro = t ? be16(t, 6) / 10 : 101.3;
     const d = {
-      rpm: a ? be16(a, 0) : null, boost: a ? be16(a, 2) / 10 - baro : null, cltP: a ? be16(a, 6) / 10 - 101.3 : null,
+      rpm: a ? be16(a, 0) : null, tps: a ? be16(a, 4) / 10 : null, boost: a ? be16(a, 2) / 10 - baro : null, cltP: a ? be16(a, 6) / 10 - 101.3 : null,
       fuelP: b ? be16(b, 0) / 10 - 101.3 : null, oilP: b ? be16(b, 2) / 10 - 101.3 : null,
       duty: c ? be16(c, 0) / 10 : null, lam: l ? be16(l, 0) / 1000 : null,
       batt: t ? be16(t, 0) / 10 : null, tgtBoost: t ? be16(t, 4) / 10 : null,
@@ -292,12 +292,17 @@ const GaugeView = (() => {
         s.rows = [["LAST", lt(gpsStatus.last), false], ["BEST", lt(gpsStatus.best), false]];
         break;
       }
-      case 11: {         // face: reacts to the car
+      case 11: {         // face: reacts to the car (same rules as the gauge)
         s.mode = "face";
-        const run = d.rpm !== null && d.rpm >= 100;
+        const now = performance.now(), run = d.rpm !== null && d.rpm >= 100;
         const red = st("w_shift_on") ? st("w_shift") : st("tachmax") * 0.85;
-        s.mood = gaugeStatus.warn ? 6 : !run ? 0 : d.rpm >= red ? 4 : d.boost !== null && d.boost >= 34.5 ? 3
-          : d.clt !== null && d.clt < 60 ? 5 : d.rpm > 1500 ? 2 : 1;
+        if (run) { if (!runSince) runSince = now; } else runSince = 0;
+        const idling = run && d.rpm < 1500 && (d.kmh === null || d.kmh < 3);
+        if (idling) { if (!idleSince) idleSince = now; } else idleSince = 0;
+        s.mood = gaugeStatus.warn ? 6 : !run ? 0 : now - runSince < 4000 ? 7 : d.rpm >= red ? 4 : d.boost !== null && d.boost >= 34.5 ? 3
+          : d.rpm > 2500 && d.tps !== null && d.tps < 3 && d.boost !== null && d.boost < 0 ? 10 : d.kmh !== null && d.kmh >= 120 ? 9
+          : d.gear !== null && d.gear < 0 ? 11 : d.clt !== null && d.clt >= 95 ? 8 : d.clt !== null && d.clt < 60 ? 5
+          : d.rpm > 1500 ? 2 : idleSince && now - idleSince > 60000 ? 12 : 1;
         s.line = `${d.rpm === null ? "--" : d.rpm} RPM  ${g(d.boost, v => fmtP(v, 2))} ${pUnit()}`;
         break;
       }
@@ -316,14 +321,21 @@ const GaugeView = (() => {
     blink: [".......", ".......", ".......", "#######", ".......", "......."], happy: [".......", "..###..", ".#...#.", "#.....#", ".......", "......."],
     sleep: [".......", ".......", "#.....#", ".#####.", ".......", "......."], x: ["#.....#", ".#...#.", "..#.#..", "...#...", "..#.#..", ".#...#.", "#.....#"],
     left: ["##.....", "..##...", "....##.", "..##...", "##.....", "......."], right: [".....##", "...##..", ".##....", "...##..", ".....##", "......."],
-    cold: [".......", ".#####.", "#.###.#", ".#####.", ".......", "......."] };
+    cold: [".......", ".#####.", "#.###.#", ".#####.", ".......", "......."],
+    lookl: [".#####.", "#.....#", "###...#", "###...#", "#.....#", ".#####."], lookr: [".#####.", "#.....#", "#...###", "#...###", "#.....#", ".#####."],
+    lidl: [".......", "#######", "###...#", "###...#", ".#####.", "......."], lidr: [".......", "#######", "#...###", "#...###", ".#####.", "......."],
+    tired: [".......", "#######", "#.###.#", ".#####.", ".......", "......."], shade: ["#######", "#######", "#######", ".#####.", ".......", "......."] };
   const FM = {
     flat: ["...#########..."], smile: ["#.............#", ".#...........#.", "..###########.."], grin: ["###############", "#.............#", ".#...........#.", "..###########.."],
     teeth: ["###############", "#.#.#.#.#.#.#.#", "###############"], o: ["..#####..", ".#.....#.", "#.......#", ".#.....#.", "..#####.."],
-    snore: ["....###....", "...#...#...", "....###...."], wobble: ["..##..##..##..#", ".#..##..##..##."] };
+    snore: ["....###....", "...#...#...", "....###...."], wobble: ["..##..##..##..#", ".#..##..##..##."],
+    smallo: [".###.", "#...#", ".###."], smirk: ["............##", "..#########..."], wavy: [".##...##...##..", "#..###..###..##"] };
+  const DROP = ["..#..", ".###.", "#####", ".###."];
   const MOODS = [["ZZZ", "sleep", "sleep", "snore"], ["IDLE", "open", "open", "flat"], ["CRUISE", "happy", "happy", "smile"], ["BOOST!", "wide", "wide", "grin"],
-    ["REDLINE", "left", "right", "teeth"], ["COLD", "cold", "cold", "wobble"], ["WARNING", "x", "x", "o"]];
-  let nextBlink = 0, blinkEnd = 0;
+    ["REDLINE", "left", "right", "teeth"], ["COLD", "cold", "cold", "wobble"], ["WARNING", "x", "x", "o"],
+    ["HELLO!", "happy", "blink", "smile"], ["HOT", "tired", "tired", "wavy"], ["FAST", "shade", "shade", "smirk"],
+    ["POP POP", "happy", "happy", "o"], ["REVERSE", "lookr", "lookr", "flat"], ["BORED", "lidr", "lidr", "flat"]];
+  let nextBlink = 0, blinkEnd = 0, runSince = 0, idleSince = 0;
   function blitArt(art, cx, cy, cell, c) {
     const h = art.length, w = art[0].length, x0 = cx - w * cell / 2, y0 = cy - h * cell / 2;
     for (let r = 0; r < h; r++) for (let k = 0; k < w; k++) if (art[r][k] === "#") fillRect(x0 + k * cell, y0 + r * cell, x0 + (k + 1) * cell - 1, y0 + (r + 1) * cell - 1, c);
@@ -334,7 +346,10 @@ const GaugeView = (() => {
     s.dx = shake ? Math.floor(Math.random() * (shake * 4 + 1)) - shake * 2 : 0;
     if (s.mood === 5) s.dx = Math.round(Math.sin(now / 40) * 3);
     if (s.mood === 1) { if (now > nextBlink) { blinkEnd = now + 140; nextBlink = now + 2500 + Math.random() * 3000; } s.blink = now < blinkEnd ? 1 : 0; }
-    if (s.mood === 0) s.z = Math.floor(now / 25) % 40;
+    if (s.mood === 0 || s.mood === 8) s.z = Math.floor(now / 25) % 40;
+    else if (s.mood === 10) s.z = Math.floor(now / 160) % 2;
+    else if (s.mood === 11) s.z = Math.floor(now / 500) % 2;
+    else if (s.mood === 12) s.z = Math.floor(now / 700) % 32;
   }
 
   // Keypad buttons (same 2 x 2 grid as the gauge)
@@ -351,7 +366,7 @@ const GaugeView = (() => {
     const now = performance.now();
     s.pressed = now < flashUntil ? flashBtn : 0;
     s.rec = (gaugeStatus.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
-    s.shift = st("w_shift_on") && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
+    s.shift = st("w_shift_on") && (S && S.shift_show !== undefined ? S.shift_show : 1) && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
     if (s.mode === "face") faceMotion(s, now);
     const sig = type + JSON.stringify(s);
     if (tile && tile.sig === sig) return;            // nothing changed on this face
@@ -382,12 +397,20 @@ const GaugeView = (() => {
         else { drawText("LOG", cx, y + 28, CELL_SMALL, tc, 1); drawText(s.log === 0 ? "NO SD" : s.log === 2 ? "REC" : "OFF", cx, y + 62, CELL_MED, tc, 1); }
       });
     } else if (s.mode === "face") {
-      const [name, el, er, mo] = MOODS[s.mood], col = s.mood === 6 ? C_WARN : C_LIT;
+      let [name, el, er, mo] = MOODS[s.mood];
+      const col = s.mood === 6 ? C_WARN : C_LIT, alt = (s.z || 0) & 1;
+      if (s.mood === 10) mo = alt ? "smallo" : "o";
+      if (s.mood === 11) el = er = alt ? "lookl" : "lookr";
+      if (s.mood === 12) { el = er = alt ? "lidl" : "lidr"; mo = s.z % 16 === 0 ? "o" : "flat"; }
       drawTitle(name, s.mood === 6);
-      blitArt(FE[s.blink ? "blink" : el], 168 + s.dx, 210 + s.dy, 12, col);
-      blitArt(FE[s.blink ? "blink" : er], 312 + s.dx, 210 + s.dy, 12, col);
-      blitArt(FM[mo], 240 + s.dx, 312 + s.dy, 12, col);
-      if (s.mood === 0) { drawText("Z", 360, 170 - s.z, 4.5, C_LIT, 1); drawText("Z", 394, 140 - s.z, 3, C_LIT, 1); }
+      const top = gTitleY + TH, bottom = 392 - 3.5 * CELL_MED, gap = (bottom - top - 84 - 24 - 60) / 2;   // equal space above and below the face
+      const eyeY = Math.round(top + gap + 42) + s.dy, mouthY = Math.round(top + gap + 84 + 24 + 30) + s.dy;
+      blitArt(FE[s.blink ? "blink" : el], 168 + s.dx, eyeY, 12, col);
+      blitArt(FE[s.blink ? "blink" : er], 312 + s.dx, eyeY, 12, col);
+      if (s.mood === 9) fillRect(168 + 42 + s.dx, eyeY - 30, 312 - 42 + s.dx, eyeY - 19, col);   // glasses bridge
+      blitArt(FM[mo], 240 + s.dx, mouthY, 12, col);
+      if (s.mood === 0) { drawText("Z", 362, eyeY - 30 - s.z, 4.5, C_LIT, 1); drawText("Z", 396, eyeY - 60 - s.z, 3, C_LIT, 1); }
+      if (s.mood === 8) blitArt(DROP, 392, eyeY - 20 + s.z, 5, C_LIT);
       drawText(s.line, CX, 392, CELL_MED, C_LIT, 1);
     } else if (s.mode === "alerts") {
       drawTitle("ALERTS", false);
@@ -404,7 +427,7 @@ const GaugeView = (() => {
       drawText("REC", rx, BPD_Y, CELL_LABEL, C_WARN, 2);
       fillRect(dx, BPD_Y - 5, dx + 9, BPD_Y + 4, C_WARN);
     }
-    if (s.shift) fillAnnulus(226, 240, C_LIT);
+    if (s.shift) fillAnnulus(226, 240, hex(S && S.shift_rgb !== undefined ? S.shift_rgb : 0xFFB000));
     drawGrid();
     ctx.putImageData(img, 0, 0);
   }
