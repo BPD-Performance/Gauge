@@ -529,8 +529,12 @@ $("defaultsBtn").onclick = async () => {
 // and a laptop can show different numbers of gauges. The grid works out the column count
 // that makes the faces as big as possible, and stops adding once faces would get smaller
 // than MIN_FACE (still readable).
-const MIN_FACE = 160, MAX_FACE = 900, FACE_GAP = 12;
-let gaugeTab = true, editMode = false;
+const FACE_GAP = 12, MAX_FACE = 900;
+const SIZE_MIN = { small: 160, medium: 240, large: 330 };      // smallest face for each size setting (screen px)
+const SIMPLE_BELOW = 270;                                        // faces smaller than this drop the fine detail
+const minFace = () => SIZE_MIN[localStorage.getItem("faceSize") || "small"] || 160;
+const faceOpts = size => ({ clear: localStorage.getItem("faceStyle") === "clear", simple: size < SIMPLE_BELOW });
+let gaugeTab = true, editMode = false, faceSizePx = 300;
 let tiles = JSON.parse(localStorage.getItem("gaugeTiles") || "null") || [0];
 const tileEls = [];
 
@@ -541,38 +545,40 @@ const allowedPages = () => {
 };
 const saveTiles = () => localStorage.setItem("gaugeTiles", JSON.stringify(tiles));
 
+// The Gauge tab is locked to the screen: it fills the space between the header and the tab bar
+// and never scrolls. The faces are centred in it, so the space above and below is equal.
+function sizeGaugeTab() {
+  const tab = $("tab-gauge");
+  if (document.fullscreenElement === tab) { tab.style.height = ""; return; }
+  const top = tab.getBoundingClientRect().top, nav = document.querySelector("nav").getBoundingClientRect().height;
+  tab.style.height = Math.max(200, window.innerHeight - top - nav - 8) + "px";
+}
 function gridSpace() {
-  const box = $("faces"), full = document.fullscreenElement === $("tab-gauge");
-  const W = box.clientWidth || window.innerWidth - 32;
-  const top = box.getBoundingClientRect().top;
-  const editRoom = editMode ? 44 : 0;                       // page picker under each face
-  const H = window.innerHeight - top - (full ? 12 : 84);    // leave room for the tab bar
-  return { W, H, editRoom };
+  sizeGaugeTab();
+  const box = $("faces");
+  return { W: box.clientWidth || window.innerWidth - 32, H: box.clientHeight || window.innerHeight - 200 };
 }
 function bestFit(n, sp) {
   let best = 0, cols = 1;
   for (let c = 1; c <= n; c++) {
     const r = Math.ceil(n / c);
-    const size = Math.min((sp.W - (c - 1) * FACE_GAP) / c, (sp.H - (r - 1) * FACE_GAP) / r - sp.editRoom);
+    const size = Math.min((sp.W - (c - 1) * FACE_GAP) / c, (sp.H - (r - 1) * FACE_GAP) / r);
     if (size > best) { best = size; cols = c; }
   }
   return { size: Math.floor(Math.min(best, MAX_FACE)), cols };
 }
 function capacity(sp) {
   let n = 1;
-  while (n < 64 && bestFit(n + 1, sp).size >= MIN_FACE) n++;
+  while (n < 64 && bestFit(n + 1, sp).size >= minFace()) n++;
   return n;
 }
 
 function layoutFaces() {
   const sp = gridSpace();
-  let fit = bestFit(tiles.length, sp);
+  const fit = bestFit(tiles.length, sp);           // always fits the screen (shrinks rather than scrolls)
   const cap = capacity(sp);
-  if (fit.size < MIN_FACE) {                       // more gauges than fit: keep them readable and scroll
-    const cols = Math.max(1, Math.floor((sp.W + FACE_GAP) / (MIN_FACE + FACE_GAP)));
-    fit = { cols, size: Math.floor((sp.W - (cols - 1) * FACE_GAP) / cols) };
-  }
-  const size = fit.size;
+  const size = Math.max(60, fit.size);
+  faceSizePx = size;
   $("faces").style.gridTemplateColumns = `repeat(${fit.cols}, ${size}px)`;
   tileEls.forEach(t => t.wrap.style.width = size + "px");
   $("gCap").textContent = `${tiles.length} of ${cap} fit`;
@@ -653,7 +659,8 @@ function faceLoop(t) {
   const period = tileEls.length > 4 ? 66 : 45;     // lighter refresh with lots of gauges
   if (gaugeTab && !document.hidden && t - lastFace > period) {
     lastFace = t;
-    tileEls.forEach((el, i) => GaugeView.render(tiles[i], el.ctx, el));
+    const o = faceOpts(faceSizePx);
+    tileEls.forEach((el, i) => GaugeView.render(tiles[i], el.ctx, el, o));
   }
   requestAnimationFrame(faceLoop);
 }
@@ -711,6 +718,7 @@ document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("main section").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
   gaugeTab = b.dataset.tab === "gauge";
+  document.body.classList.toggle("gaugeMode", gaugeTab);
   const wasLive = liveTab;
   liveTab = b.dataset.tab === "live";
   if (liveTab !== wasLive) subscribe().catch(() => {});
@@ -730,6 +738,27 @@ setInterval(() => { if (gaugeStatus.warn !== lastWarnMask || gaugeStatus.warn) p
 renderDiag();
 buildFaces();
 Logs.init();
+
+// Per-device Gauge tab size and style
+$("faceSize").value = localStorage.getItem("faceSize") || "small";
+$("faceStyle").value = localStorage.getItem("faceStyle") || "dot";
+$("faceSize").onchange = () => { localStorage.setItem("faceSize", $("faceSize").value); layoutFaces(); };
+$("faceStyle").onchange = () => { localStorage.setItem("faceStyle", $("faceStyle").value); tileEls.forEach(t => t.sig = ""); };
+document.body.classList.add("gaugeMode");
+setTimeout(layoutFaces, 50);
+
+// "?" help: every page with explanations gets a ? button at the top that shows them
+function addHelpButtons() {
+  document.querySelectorAll("main > section").forEach(sec => {
+    if (sec.querySelector(":scope > .helpBtn") || !sec.querySelector(".lead:not(.msg)")) return;
+    const b = document.createElement("button");
+    b.className = "helpBtn"; b.type = "button"; b.textContent = "?"; b.setAttribute("aria-label", "Help for this page");
+    b.onclick = () => { sec.classList.toggle("showhelp"); b.setAttribute("aria-expanded", sec.classList.contains("showhelp")); if (sec.id === "tab-gauge") setTimeout(layoutFaces, 0); };
+    sec.prepend(b);
+  });
+}
+addHelpButtons();
+setInterval(addHelpButtons, 2000);                // sections filled in later (settings, logs) get theirs too
 
 // CAN keypad full screen: big buttons filling the screen, for use in the car
 $("kpFull").onclick = () => {

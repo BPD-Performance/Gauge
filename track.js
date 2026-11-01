@@ -311,7 +311,7 @@ const Track = (() => {
         <div class="actions"><button class="btn pink" id="gpsSave" type="button">Save GPS settings to gauge</button></div>
       </div></details>
       <div class="block"><h2>Track</h2>
-      <p class="lead" id="trkEditing">New track. Give it a name, find the circuit or tap the map, then save it to the library.</p>
+      <p class="lead msg" id="trkEditing">New track. Give it a name, find the circuit or tap the map, then save it to the library.</p>
       <div class="grid"><div><label for="trkName">Name</label><input id="trkName" placeholder="Sandown"></div>
         <div><label for="trkWidth">Line width (m)</label><input id="trkWidth" class="num" style="width:100%" value="25" inputmode="numeric"></div></div>
       <div class="actions" style="margin:10px 0">
@@ -328,7 +328,7 @@ const Track = (() => {
         <div id="trkTintBox"><label for="trkTint">Street map colour</label><select id="trkTint"><option value="1">Amber</option><option value="0">Normal</option></select></div></div>
       <div id="trkMap" class="trkmap"></div>
       <div class="actions" style="margin:8px 0"><button class="btn ghost" id="trkMe" type="button">Go to me</button><button class="btn ghost red" id="trkTiles" type="button">Clear saved maps</button></div>
-      <p class="lead" id="trkMsg" role="status">Tap the map to place each line (it snaps to the outline if there is one). You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
+      <p class="lead msg" id="trkMsg" role="status">Tap the map to place each line (it snaps to the outline if there is one). You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
       <div class="list" id="trkGates"></div>
       <div class="actions"><button class="btn pink" id="trkSend" type="button">Send track to gauge</button><button class="btn ghost" id="trkSave" type="button">Save to library</button><button class="btn ghost red" id="trkClr" type="button">Clear gauge track</button></div>
       </div>

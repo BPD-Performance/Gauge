@@ -34,7 +34,7 @@ const GaugeView = (() => {
 
   // ---------------- Colours / geometry (as Gauge_UI.cpp) ----------------
   const hex = h => (0xFF000000 | ((h & 0xFF) << 16) | (h & 0xFF00) | ((h >> 16) & 0xFF)) >>> 0;   // canvas is RGBA little endian
-  const C_BG = hex(0x060300), C_DIM = hex(0x1F1400), C_LIT = hex(0xFFB000), C_WARN = hex(0xFF3B1F), C_OFF = hex(0x6B4800), C_BRAND = hex(0xED008C);
+  const C_BG = hex(0x060300), C_DIM = hex(0x1F1400), C_LIT = hex(0xFFB000), C_WARN = hex(0xFF3B1F), C_OFF = hex(0x6B4800), C_BRAND = hex(0xED008C), C_BLACK = hex(0x000000);
   const CX = 240, CY = 240, LR = 158, NY = 236, UNIT_Y = NY + 70, ROW1_Y = 352, ROW2_Y = 392, BPD_Y = 446, TH = 36, TITLE_W = 150;
   const NSEG = 45, R_OUT = 216, R_IN = 186, R_OUT_BIG = 222, R_IN_BIG = 182;
   const CELL_LABEL = 2.25, CELL_BIG = 12, CELL_MED = 3, CELL_SMALL = 2.5;
@@ -358,7 +358,10 @@ const GaugeView = (() => {
 
   // Draw one page into ctx (a 480 x 480 canvas). Several canvases share the pixel buffer.
   // tile remembers what was last drawn on that canvas, so nothing is redrawn until it changes.
-  function render(type, ctx, tile) {
+  // opts.clear: no dot grid, black background (easier to read small or in sunlight)
+  // opts.simple: small face, so drop the dial numbers and bottom rows and keep the big number
+  function render(type, ctx, tile, opts) {
+    opts = opts || {};
     const d = readData();
     if (d.boost !== null && (boostPk === null || d.boost > boostPk)) boostPk = d.boost;
     if (d.iat !== null && (iatPk === null || d.iat > iatPk)) iatPk = d.iat;
@@ -368,18 +371,18 @@ const GaugeView = (() => {
     s.rec = (gaugeStatus.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
     s.shift = st("w_shift_on") && (S && S.shift_show !== undefined ? S.shift_show : 1) && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
     if (s.mode === "face") faceMotion(s, now);
-    const sig = type + JSON.stringify(s);
+    const sig = type + (opts.clear ? "c" : "d") + (opts.simple ? "s" : "f") + JSON.stringify(s);
     if (tile && tile.sig === sig) return;            // nothing changed on this face
     if (tile) tile.sig = sig;
-    px.fill(C_DIM);
+    px.fill(opts.clear ? C_BLACK : C_DIM);
     if (s.mode === "gauge") {
       drawRing(s.seg);
-      s.lbl.forEach((l, k) => { const a = rad(135 + k * 60); drawText(l, CX + LR * Math.cos(a), CY + LR * Math.sin(a), CELL_LABEL, C_LIT, 1); });
+      if (!opts.simple) s.lbl.forEach((l, k) => { const a = rad(135 + k * 60); drawText(l, CX + LR * Math.cos(a), CY + LR * Math.sin(a), CELL_LABEL, C_LIT, 1); });
       drawTitle(s.title, false);
       drawText(s.centre, CX, NY, s.big || CELL_BIG, s.cw ? C_WARN : C_LIT, 1);
       drawText(s.unit, CX, UNIT_Y, CELL_MED, C_LIT, 1);
       const rc = s.rowCell || CELL_MED;
-      s.rows.forEach((r, i) => { const y = i ? ROW2_Y : ROW1_Y; drawText(r[0], gLeftEdge, y, rc, C_LIT, 0); drawText(r[1], gRightEdge, y, rc, r[2] ? C_WARN : C_LIT, 2); });
+      if (!opts.simple) s.rows.forEach((r, i) => { const y = i ? ROW2_Y : ROW1_Y; drawText(r[0], gLeftEdge, y, rc, C_LIT, 0); drawText(r[1], gRightEdge, y, rc, r[2] ? C_WARN : C_LIT, 2); });
     } else if (s.mode === "monitor") {
       drawTitle("MONITOR", false);
       s.mon.forEach((r, i) => { const y = gTitleY + TH + 34 + i * 40, c = r[3] ? C_WARN : C_LIT;
@@ -428,7 +431,7 @@ const GaugeView = (() => {
       fillRect(dx, BPD_Y - 5, dx + 9, BPD_Y + 4, C_WARN);
     }
     if (s.shift) fillAnnulus(226, 240, hex(S && S.shift_rgb !== undefined ? S.shift_rgb : 0xFFB000));
-    drawGrid();
+    if (!opts.clear) drawGrid();
     ctx.putImageData(img, 0, 0);
   }
 

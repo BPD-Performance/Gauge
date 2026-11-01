@@ -101,17 +101,28 @@ input[type=checkbox]:checked,.dx.on{background-image:url("data:image/svg+xml,%3C
 #msg{font:13px var(--dot);color:var(--amber2);min-height:1.5em}
 pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px;font-size:.8rem;white-space:pre-wrap;word-break:break-all;max-height:260px;overflow:auto}
 .empty{background:var(--bg);border:2px dashed var(--line);padding:16px;color:var(--amber2);font:13px var(--dot)}
-.gbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 10px}
+.gbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:4px 0 10px;padding-right:48px}
+body.gaugeMode{overflow:hidden;overscroll-behavior:none}
+body.gaugeMode main{padding-bottom:0}
+#tab-gauge{display:flex;flex-direction:column;overflow:hidden}
+#tab-gauge[hidden]{display:none}
 .gbar .btn{min-height:38px;font-size:13px;padding:0 12px}
 #gCap{font:12px var(--dot);color:var(--amber2);margin-left:auto}
-.faces{display:grid;gap:12px;justify-content:center}
-.ft{display:flex;flex-direction:column;align-items:center;gap:6px}
+.faces{display:grid;gap:12px;justify-content:center;align-content:center;flex:1;min-height:0;overflow:hidden}
+.ft{position:relative}
 .face{display:block;aspect-ratio:1;border-radius:50%;border:3px solid #222;touch-action:none;width:100%}
-.ft .ed{display:flex;gap:6px;width:100%}
+.ft .ed{position:absolute;left:16%;right:16%;bottom:9%;display:flex;gap:6px;background:rgba(6,3,0,.85);padding:4px}
 .ft .ed select{min-height:36px;padding:4px 6px;font-size:12px}
 .ft .ed button{min-height:36px;padding:0 10px;font-size:12px}
-#tab-gauge:fullscreen{background:var(--bg);padding:10px;overflow:auto}
-#tab-gauge:fullscreen #gHint{display:none}
+#tab-gauge:fullscreen{background:var(--bg);padding:10px;height:100vh !important}
+/* "?" help: explanations stay hidden until the page's ? is tapped */
+section{position:relative}
+.helpBtn{float:right;margin:4px 0 6px 10px;width:38px;height:38px;min-height:0;padding:0;border:2px solid var(--amber);background:var(--bg);color:var(--amber);font:18px var(--dot);border-radius:0;position:relative;z-index:3}
+#tab-gauge>.helpBtn{position:absolute;top:4px;right:0;margin:0}
+#tab-keypad:fullscreen>.helpBtn{display:none}
+section.showhelp>.helpBtn{background:var(--amber);color:var(--bg)}
+section:not(.showhelp) .lead:not(.msg){display:none}
+section .lead:not(.msg){border-left:3px solid var(--pink);padding-left:10px}
 .wl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font:14px var(--dot)}
 .wl:last-child{border-bottom:0}
 .wl .v{color:var(--warn);text-align:right}
@@ -156,8 +167,8 @@ details.sec[open]>summary .pm::before{content:"-"}
   <button class="btn ghost" id="gFull" type="button">Full screen</button>
   <span id="gCap"></span>
  </div>
+ <p class="lead">Add as many gauges as fit this screen; how big they are and the display style are set per device in the Device tab. Swipe a gauge to change its page, or use Edit. On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
  <div class="faces" id="faces"></div>
- <p class="lead" id="gHint" style="text-align:center">Add as many gauges as fit this screen. Swipe a gauge to change its page, or use Edit. On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
 </section>
 
 <section id="tab-live" hidden>
@@ -178,7 +189,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  </div>
  <div style="margin-top:10px"><label for="showMode">Show</label>
   <select id="showMode"><option value="used">In use (auto-detected)</option><option value="data">All with data</option><option value="all">Everything</option></select></div>
- <p class="lead" id="usedNote" style="margin-top:6px"></p>
+ <p class="lead msg" id="usedNote" style="margin-top:6px"></p>
  <div class="list" id="channels"></div>
 </section>
 
@@ -214,7 +225,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  <h2>SD card</h2>
  <div id="logStore"></div>
  <div class="actions" style="margin:10px 0"><button class="btn ghost" id="logRefresh" type="button">Refresh</button><button class="btn ghost red" id="delAll" type="button">Delete all</button></div>
- <p class="lead" id="logMsg" role="status"></p>
+ <p class="lead msg" id="logMsg" role="status"></p>
  <div class="list" id="fileList"></div>
  <h2>On this device</h2>
  <div class="list" id="localList"></div>
@@ -261,6 +272,12 @@ details.sec[open]>summary .pm::before{content:"-"}
   <label for="startTab">Open the app on</label>
   <select id="startTab"><option value="gauge">Gauge</option><option value="keypad">CAN keypad</option><option value="live">Live</option><option value="lap">Lap timer</option><option value="logs">Logs</option></select>
   <div class="lead" style="margin:8px 0 0">Handy for a head unit: set it to Gauge (then use Full screen) or CAN keypad. Two devices can be connected to the gauge at the same time, for example the head unit and your phone.</div>
+ </div>
+ <h2>Gauge tab on this device</h2>
+ <div class="card">
+  <div class="grid"><div><label for="faceSize">Gauge size</label><select id="faceSize"><option value="small">Small (most gauges)</option><option value="medium">Medium</option><option value="large">Large (easiest to read)</option></select></div>
+   <div><label for="faceStyle">Display style</label><select id="faceStyle"><option value="dot">Dot matrix</option><option value="clear">Clear (no dots, black)</option></select></div></div>
+  <div class="lead" style="margin:8px 0 0">Saved separately on each phone, laptop or head unit. Clear is easier to read on small screens and in sunlight. Small gauges automatically hide the dial numbers and bottom rows so the main reading stays readable.</div>
  </div>
  <h2>Connecting</h2>
  <div class="card">

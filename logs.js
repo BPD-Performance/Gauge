@@ -406,8 +406,8 @@ const Logs = (() => {
       <label style="margin-top:10px">Channels and rate</label>
       <div class="seg" id="lgRate"><button class="btn ghost" data-r="10" type="button">10/s</button><button class="btn ghost" data-r="20" type="button">20/s</button><button class="btn ghost" data-r="50" type="button">50/s</button></div>
       <div id="lgCh" class="chipgrid" style="margin-top:8px"></div>
-      <div id="lgEst" class="lead" style="margin-top:6px"></div>
-      <p id="lgMsg" class="lead" role="status">Changes are sent to the gauge as you make them.</p>
+      <div id="lgEst" class="lead msg" style="margin-top:6px"></div>
+      <p id="lgMsg" class="lead msg" role="status">Changes are sent to the gauge as you make them.</p>
       <div class="actions"><button class="btn pink" id="lgSave" type="button">Save logging settings to gauge</button></div>`;
     ["st_rpm", "st_spd", "st_tps", "st_bst", "sp_eng", "sp_still"].forEach(k => { $l(k + "_on").checked = !!cfg[k + "_on"]; $l(k).value = k === "st_bst" ? +bstShown.toFixed(pu == 1 ? 2 : 0) : cfg[k]; });
     $l("lg_pre").value = cfg.pre; $l("lg_min").value = cfg.min; $l("lg_split").value = cfg.split; $l("lg_full").value = cfg.full;
