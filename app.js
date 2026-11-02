@@ -442,7 +442,8 @@ function renderSettings() {
   <h2>Warnings</h2><div id="warnBox"></div>
   <h2>Screen</h2>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
-   ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
+   ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}
+   ${sel("face_style", "Face page style", [[0, "Classic (dot matrix)"], [1, "Turbo bot (16-bit)"]])}</div>
   <div class="list" style="margin-top:12px">
    <div class="lrow"><label class="ck2"><input type="checkbox" id="face_popup"> Show warning popups over the Face page</label></div>
    <div class="lrow"><label class="ck2"><input type="checkbox" id="shift_show"> Flash the shift light ring</label></div>
@@ -455,6 +456,8 @@ function renderSettings() {
   // Face popup and shift light (older gauge firmware doesn't send these, so default them)
   $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;
   $("shift_show").checked = S.shift_show === undefined ? true : !!S.shift_show;
+  $("face_style").value = S.face_style === undefined ? 0 : S.face_style;     // older firmware: Classic only
+  $("face_style").disabled = S.face_style === undefined;
   const hex = "#" + ((S.shift_rgb === undefined ? 0xFFB000 : S.shift_rgb) >>> 0).toString(16).padStart(6, "0").toUpperCase();
   $("shift_rgb").value = hex;
   $("shift_pre").value = SHIFT_COLOURS.some(c => c[1] === hex) ? hex : "custom";
@@ -499,6 +502,7 @@ function readForm() {
   for (let i = 1; i <= 6; i++) if ($("g" + i)) S["g" + i] = parseFloat($("g" + i).value);
   S.face_popup = $("face_popup").checked ? 1 : 0;
   S.shift_show = $("shift_show").checked ? 1 : 0;
+  if (S.face_style !== undefined) S.face_style = +$("face_style").value;
   S.shift_rgb = parseInt($("shift_rgb").value.slice(1), 16);
   readWarns();
 }

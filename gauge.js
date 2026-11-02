@@ -352,6 +352,92 @@ const GaugeView = (() => {
     else if (s.mood === 12) s.z = Math.floor(now / 700) % 32;
   }
 
+
+  // ---------------- Face page, Turbo bot style (16-bit) ----------------
+  // Same as the gauge: a 160 x 160 picture (pre-drawn art from turbobot.js plus title plate,
+  // readout, Zs, REC and BPD drawn on the grid with a dark outline) shown at 3x.
+  const TB = (() => {
+    if (typeof TURBOBOT === "undefined") return null;
+    const T = TURBOBOT, G = T.grid;
+    const dec = b => Uint8Array.from(atob(b), c => c.charCodeAt(0));
+    const frames = {};
+    for (const k in T.frames) frames[k] = dec(T.frames[k]);
+    const inside = new Uint8Array(G * G);
+    for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) inside[y * G + x] = (x - 79.5) ** 2 + (y - 79.5) ** 2 <= 6400 ? 1 : 0;
+    return { T, G, pal: T.pal.map(hex), bg: dec(T.bg), frames, inside, comp: new Uint32Array(G * G) };
+  })();
+  function tbPut(x, y, c) { if (x >= 0 && x < TB.G && y >= 0 && y < TB.G) TB.comp[y * TB.G + x] = c; }
+  function tbRle(d, x0, y0, w) {
+    let i = 0;
+    for (let k = 0; k + 1 < d.length; k += 2) {
+      const n = d[k], v = d[k + 1];
+      if (!v) { i += n; continue; }
+      const c = TB.pal[v];
+      for (let j = 0; j < n; j++, i++) tbPut(x0 + i % w, y0 + Math.floor(i / w), c);
+    }
+  }
+  const tbTextW = (s, sc) => { let c = 0; for (const ch of String(s)) c += glyph(ch)[0].length + 1; return Math.max(0, c - 1) * sc; };
+  function tbText(s, x, y, c, sc, align) {
+    s = String(s);
+    const w = tbTextW(s, sc), x0 = align === 1 ? x - Math.floor(w / 2) : align === 2 ? x - w : x, o = hex(0x060A10);
+    for (let pass = 0; pass < 2; pass++) {
+      let cx = x0;
+      for (const ch of s) {
+        const g = glyph(ch);
+        for (let r = 0; r < 7; r++) for (let k = 0; k < g[r].length; k++) {
+          if (g[r][k] !== "#") continue;
+          const a0 = cx + k * sc, b0 = y + r * sc;
+          if (pass === 0) { for (let a = -1; a <= sc; a++) for (let b = -1; b <= sc; b++) tbPut(a0 + a, b0 + b, o); }
+          else { for (let a = 0; a < sc; a++) for (let b = 0; b < sc; b++) tbPut(a0 + a, b0 + b, c); }
+        }
+        cx += (g[0].length + 1) * sc;
+      }
+    }
+  }
+  function tbFrame(s) {
+    const alt = (s.z || 0) & 1;
+    switch (s.mood) {
+      case 0: return "sleep";   case 1: return s.blink ? "idle_blink" : "idle"; case 2: return "cruise";
+      case 3: return "boost";   case 4: return "redline"; case 5: return "cold";  case 6: return "warn";
+      case 7: return "hello";   case 8: return "hot";     case 9: return "fast";
+      case 10: return alt ? "pop_b" : "pop_a";
+      case 11: return alt ? "rev_l" : "rev_r";
+      case 12: return s.z % 16 === 0 ? "bored_yawn" : alt ? "bored_l" : "bored_r";
+      default: return "idle";
+    }
+  }
+  function tbDraw(s) {
+    const T = TB.T, G = TB.G, gdx = Math.round((s.dx || 0) / 3), gdy = Math.round((s.dy || 0) / 3);
+    tbRle(TB.bg, 0, 0, G);
+    tbRle(TB.frames[tbFrame(s)], T.fx + gdx, T.fy + gdy, T.fw);
+    if (s.mood === 8) {                                   // sweat drop sliding down
+      const y0 = 46 + Math.floor((s.z || 0) / 3) + gdy;
+      for (let y = 0; y < T.drop.h; y++) for (let x = 0; x < T.drop.w; x++) { const v = T.drop.px[y * T.drop.w + x]; if (v) tbPut(114 + gdx + x, y0 + y, TB.pal[v]); }
+    }
+    if (s.mood === 0) {                                   // Zs drifting up
+      const zy = Math.floor((s.z || 0) / 4), ice = hex(0xDCF4FF);
+      tbText("Z", 122, 38 - zy + gdy, ice, 2, 0); tbText("Z", 134, 26 - zy + gdy, ice, 1, 0);
+    }
+    const name = MOODS[s.mood][0], pl = T.plates[s.mood].map(hex), ol = hex(0x081216);
+    const w = Math.max(56, tbTextW(name, 1) + 14), x0 = 80 - Math.floor(w / 2);
+    for (let y = 12; y <= 25; y++) for (let x = x0; x < x0 + w; x++)
+      tbPut(x, y, y === 12 || y === 25 || x === x0 || x === x0 + w - 1 ? ol : y < 16 ? pl[0] : y > 22 ? pl[2] : pl[1]);
+    tbText(name, 80, 15, hex(0xF0F4F6), 1, 1);
+    tbText(s.line, 80, 128, hex(0xFFCE28), 1, 1);
+    tbText("BPD", 80, 143, C_BRAND, 1, 1);
+    if (s.rec) {
+      tbText("REC", 64, 143, C_WARN, 1, 2);
+      const dx = 64 - tbTextW("REC", 1) - 6;
+      for (let y = 145; y <= 147; y++) for (let x = dx; x <= dx + 2; x++) tbPut(x, y, C_WARN);
+    }
+    const comp = TB.comp, inside = TB.inside;
+    for (let i = 0; i < G * G; i++) if (!inside[i]) comp[i] = C_BLACK;
+    for (let y = 0; y < 480; y++) {                       // 3x into the 480 x 480 buffer
+      const row = Math.floor(y / 3) * G, o = y * 480;
+      for (let x = 0; x < 480; x++) px[o + x] = comp[row + Math.floor(x / 3)];
+    }
+  }
+
   // Keypad buttons (same 2 x 2 grid as the gauge)
   const KB = [[94, 210], [246, 210], [94, 312], [246, 312]], KB_W = 140, KB_H = 90;
   let flashBtn = 0, flashUntil = 0;
@@ -370,11 +456,21 @@ const GaugeView = (() => {
     s.pressed = now < flashUntil ? flashBtn : 0;
     s.rec = (gaugeStatus.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
     s.shift = st("w_shift_on") && (S && S.shift_show !== undefined ? S.shift_show : 1) && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
-    if (s.mode === "face") faceMotion(s, now);
+    if (s.mode === "face") {
+      faceMotion(s, now);
+      s.turbo = TB && st("face_style") === 1 ? 1 : 0;       // Face page style saved on the gauge
+      if (s.turbo) { s.dx = Math.round(s.dx / 3) * 3; s.dy = Math.round(s.dy / 3) * 3; }   // whole art pixels
+    }
     const sig = type + (opts.clear ? "c" : "d") + (opts.simple ? "s" : "f") + JSON.stringify(s);
     if (tile && tile.sig === sig) return;            // nothing changed on this face
     if (tile) tile.sig = sig;
     px.fill(opts.clear ? C_BLACK : C_DIM);
+    if (s.mode === "face" && s.turbo) {
+      tbDraw(s);
+      if (s.shift) fillAnnulus(226, 240, hex(S && S.shift_rgb !== undefined ? S.shift_rgb : 0xFFB000));
+      ctx.putImageData(img, 0, 0);
+      return;
+    }
     if (s.mode === "gauge") {
       drawRing(s.seg);
       if (!opts.simple) s.lbl.forEach((l, k) => { const a = rad(135 + k * 60); drawText(l, CX + LR * Math.cos(a), CY + LR * Math.sin(a), CELL_LABEL, C_LIT, 1); });
