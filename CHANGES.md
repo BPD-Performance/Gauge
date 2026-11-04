@@ -1,3 +1,7 @@
+# App changes (2026-11-04, Iron Cathedral drop)
+- Setup > Screen: new "Gauge skin" menu (BPD FC / Iron Cathedral) and a third Face page style, "Ash knight (Iron Cathedral)". Both are greyed out on older firmware.
+- The live gauge preview in the app still draws BPD FC for every skin. Service worker cache v24.
+
 # Changes (2026-11-04)
 
 Log replay
