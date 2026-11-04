@@ -429,14 +429,16 @@ function renderSettings() {
   ${tyre("r", "Rear tyres (fitted now)")}${tyre("f", "Front tyres")}${tyre("c", "Tyres the ECU speed is calibrated for")}
   ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"])}
   <div style="height:10px"></div>${sel("gearSrc", "Gear display", ["Work out from RPM", "Use ECU gear", "Off"])}
-  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, the gauge skin, the Face page style, warning popups over the Face page, and the shift light ring and colour.</p>
+  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, the gauge skin (the avatar follows it), warning popups over the Face page, and the shift light ring and colour.</p>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}
    ${sel("gauge_skin", "Gauge skin", [[0, "BPD FC"], [1, "Iron Cathedral"]])}
-   ${sel("face_style", "Face page style", [[0, "Classic (dot matrix)"], [1, "Turbo bot (16-bit)"], [2, "Ash knight (Iron Cathedral)"]])}</div>
+   ${sel("face_style", "Avatar style (BPD FC)", [[0, "Classic (dot matrix)"], [1, "Turbo bot (16-bit)"]])}</div>
+  <p class="lead" id="faceHint" style="margin-top:6px"></p>
   <div class="list" style="margin-top:12px">
    <div class="lrow"><label class="ck2"><input type="checkbox" id="face_popup"> Show warning popups over the Face page</label></div>
    <div class="lrow"><label class="ck2"><input type="checkbox" id="shift_show"> Flash the shift light ring</label></div>
+   <div class="lrow"><label class="ck2"><input type="checkbox" id="dbg_fps"> Show frame rate on the gauge (debug, switches off at power-off)</label></div>
    <div class="lrow"><span>Shift light colour</span><span style="display:flex;gap:8px;align-items:center">
      <select id="shift_pre" style="width:auto;min-height:36px">${SHIFT_COLOURS.map(c => `<option value="${c[1]}">${c[0]}</option>`).join("")}<option value="custom">Custom</option></select>
      <input type="color" id="shift_rgb" style="width:46px;min-height:36px;padding:2px"></span></div>
@@ -453,6 +455,14 @@ function renderSettings() {
   $("face_style").disabled = S.face_style === undefined;
   $("gauge_skin").value = S.gauge_skin === undefined ? 0 : S.gauge_skin;     // older firmware: BPD FC only
   $("gauge_skin").disabled = S.gauge_skin === undefined;
+  const syncFace = () => {            // the avatar follows the skin
+    const iron = +$("gauge_skin").value === 1;
+    $("face_style").disabled = iron || S.face_style === undefined;
+    $("faceHint").textContent = iron ? "Iron Cathedral always uses the Ash knight avatar. The BPD FC avatar styles come back when BPD FC is selected."
+                                     : "BPD FC avatar: Classic dot matrix or Turbo bot.";
+  };
+  $("gauge_skin").onchange = syncFace; syncFace();
+  $("dbg_fps").onchange = () => cmd({ cmd: "fps", on: $("dbg_fps").checked ? 1 : 0 }).catch(() => { $("dbg_fps").checked = false; });
   const hex = "#" + ((S.shift_rgb === undefined ? 0xFFB000 : S.shift_rgb) >>> 0).toString(16).padStart(6, "0").toUpperCase();
   $("shift_rgb").value = hex;
   $("shift_pre").value = SHIFT_COLOURS.some(c => c[1] === hex) ? hex : "custom";

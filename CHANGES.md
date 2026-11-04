@@ -1,5 +1,9 @@
 # App changes (2026-11-04, Iron Cathedral drop)
-- Setup > Screen: new "Gauge skin" menu (BPD FC / Iron Cathedral) and a third Face page style, "Ash knight (Iron Cathedral)". Both are greyed out on older firmware.
+
+## Second pass
+- Avatar follows the skin: the Face page style select is now "Avatar style (BPD FC)" and is greyed out with a note when Iron Cathedral is chosen.
+- Setup > Screen: new "Show frame rate on the gauge" checkbox (debug, not saved, switches off at power-off). Needs the matching firmware.
+- Setup > Screen: new "Gauge skin" menu (BPD FC / Iron Cathedral). Greyed out on older firmware.
 - The live gauge preview in the app still draws BPD FC for every skin. Service worker cache v24.
 
 # Changes (2026-11-04)
