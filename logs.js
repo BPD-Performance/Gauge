@@ -56,7 +56,7 @@ const Logs = (() => {
     const v = new DataView(buf);
     if (buf.byteLength < HDR || String.fromCharCode(...new Uint8Array(buf, 0, 4)) !== "BPDL") throw new Error("not a BPD log");
     const rate = v.getUint8(5), t0 = v.getUint32(8, true), mask = v.getUint32(12, true), preMs = v.getUint32(16, true);
-    const hasGps = v.getUint8(4) >= 2 && !!(mask & (1 << GPS_BIT));
+    const hasGps = v.getUint8(4) >= 2 && !!(mask & (1 << GPS_BIT)), sim = !!(v.getUint8(20) & 1);   // sim: recorded from the gauge's simulator
     const ids = []; for (let i = 0; i < NUM16; i++) if (mask & (1 << i)) ids.push(i);
     const rs = 4 + ids.length * 2 + (hasGps ? 12 : 0) + 2, rows = Math.floor((buf.byteLength - HDR) / rs);
     const t = new Float32Array(rows), w = new Uint16Array(rows), data = {};
@@ -80,7 +80,7 @@ const Logs = (() => {
     if (hasGps) for (let r = 1, s0 = -1; r < rows; r++) if (lap[r] !== lap[r - 1]) { if (s0 >= 0 && lap[r - 1] > 0) laps.push({ n: lap[r - 1], i0: s0, i1: r, ms: Math.round((t[r] - t[s0]) * 1000) }); s0 = r; }
     const marks = [];
     for (let r = 1; r < rows; r++) if (w[r] & ~w[r - 1]) marks.push(r);       // a new warning tripped
-    return { name, rate, t0, preMs, ids, rows, t, w, data, marks, dur: rows ? t[rows - 1] : 0, hasGps, lat, lon, lap, laps };
+    return { name, rate, t0, preMs, ids, rows, t, w, data, marks, dur: rows ? t[rows - 1] : 0, hasGps, lat, lon, lap, laps, sim };
   }
 
   // ---------------- Download over Bluetooth ----------------
@@ -155,7 +155,7 @@ const Logs = (() => {
     const cachedNames = new Set(cached.map(c => c.n));
     $l("fileList").innerHTML = connected && files.length ? files.map((f, i) => {
       const secs = (f.size - HDR) / rowSizeOf(f.ch) / (f.rate || 20);
-      return `<div class="frow" data-i="${i}"><div><div>${fmtDate(f.t0, f.n)}</div><div class="sm">${f.n}</div><div class="sm">${fmtDur(secs)}  ${fmtSize(f.size)}${cachedNames.has(f.n) ? "  ON DEVICE" : ""}${f.open ? "  RECORDING" : ""}</div></div>
+      return `<div class="frow" data-i="${i}"><div><div>${fmtDate(f.t0, f.n)}</div><div class="sm">${f.n}</div><div class="sm">${fmtDur(secs)}  ${fmtSize(f.size)}${cachedNames.has(f.n) ? "  ON DEVICE" : ""}${f.open ? "  RECORDING" : ""}${f.sim ? "  SIMULATED" : ""}</div></div>
         <div class="fbtn"><button class="btn" data-open="${i}" type="button">Open</button><button class="btn ghost" data-csv="${i}" type="button">CSV</button>${f.open ? "" : `<button class="btn ghost red" data-del="${i}" type="button">Del</button>`}</div></div>`; }).join("")
       : `<div class="empty">${connected ? "No logs on the card." : "Not connected."}</div>`;
     const local = cached.filter(c => !files.find(f => f.n === c.n));
@@ -207,15 +207,20 @@ const Logs = (() => {
   }
 
   // ---------------- Viewer ----------------
-  let L = null, cur = 0, v0 = 0, v1 = 1, lanes = false, playing = false, speed = 2, lastT = 0, sel = {}, replayOn = false;
+  let L = null, cur = 0, v0 = 0, v1 = 1, lanes = false, playing = false, speed = 2, lastT = 0, sel = {};
+  // Replay has its own data source and its own face: it never touches the live data, so the gauge,
+  // the simulator and Demo mode can't collide with it (and it can't hide them).
+  const rsrc = GaugeView.makeSource(true), rTile = {};
+  let pkBoost = null, pkIat = null, cumDist = null;           // running peaks and distance along the lap, from the log
   const cv = () => $l("logCv");
 
   function showLog(rec) {
     try { L = parse(rec.buf, rec.n); } catch (e) { alert(e.message); return; }
     sel = {}; L.ids.slice(0, 3).forEach(id => sel[id] = 1);
     cur = 0; v0 = 0; v1 = Math.max(1, L.dur);
+    prepReplay();
     $l("viewer").hidden = false;
-    $l("logTitle").textContent = fmtDate(L.t0, L.name);
+    $l("logTitle").textContent = fmtDate(L.t0, L.name) + (L.sim ? "  (SIMULATED DATA)" : "");
     $l("logMapBox").hidden = !L.hasGps;
     renderLaps();
     buildChips(); draw();
@@ -275,7 +280,8 @@ const Logs = (() => {
     $l("logTime").textContent = `${fmtDur(cur)}.${Math.floor((cur % 1) * 10)}`;
     $l("logRead").innerHTML = ks.map(id => { const [val, u] = show(id, L.data[id][ci]);
       return `<div style="border:2px solid var(--line);padding:2px 6px;color:${CH[id].c}">${id === GPS_BIT ? "GPS SPEED" : CH[id].n}<br><span style="font-size:16px">${val}</span> ${u}</div>`; }).join("");
-    if (replayOn) feedReplay(ci);
+    feedReplay(ci);
+    drawFace();
     drawMap(ci);
   }
 
@@ -344,6 +350,7 @@ const Logs = (() => {
 
   function tick(ts) {
     if (!playing || !L) return;
+    if ($l("tab-logs").hidden) { setPlay(false); return; }            // left the Logs tab: pause
     cur += (ts - lastT) / 1000 * speed; lastT = ts;
     if (cur >= L.dur) { cur = L.dur; setPlay(false); }
     const span = v1 - v0;
@@ -356,12 +363,42 @@ const Logs = (() => {
     if (on) { if (cur >= L.dur) cur = 0; lastT = performance.now(); requestAnimationFrame(tick); }
   }
 
-  // ---------------- Replay onto the Gauge tab ----------------
-  // Builds Haltech frames from the log row so the gauge faces show the log instead of live data.
+  // ---------------- Replay face ----------------
+  // Builds Haltech frames from the log row at the cursor into the replay source (not the live data)
+  // and draws one gauge face from it.
+  const WARN_NAMES = ["OIL P", "WATER", "LEAN", "BOOST", "OIL T", "COOL P", "FUEL", "IAT", "BATT", "DUTY"];   // bit order in the firmware
+
+  function prepReplay() {
+    // Running peaks up to each row, so scrubbing backwards shows the peak at that point
+    const run = ch => { const a = L.data[ch]; if (!a) return null; const out = new Float32Array(L.rows); let m = NaN;
+      for (let i = 0; i < L.rows; i++) { const v = a[i]; if (!isNaN(v) && (isNaN(m) || v > m)) m = v; out[i] = m; } return out; };
+    pkBoost = run(1); pkIat = run(12);
+    // Distance travelled (m) along the track, for the lap delta
+    cumDist = null;
+    if (L.hasGps) {
+      cumDist = new Float32Array(L.rows);
+      let d = 0, pl = NaN, po = NaN;
+      for (let i = 0; i < L.rows; i++) {
+        const la = L.lat[i], lo = L.lon[i];
+        if (!isNaN(la) && !isNaN(pl)) { const dy = (la - pl) * 111195, dx = (lo - po) * 111195 * Math.cos(la * Math.PI / 180), st = Math.hypot(dx, dy); if (st < 200) d += st; }
+        if (!isNaN(la)) { pl = la; po = lo; }
+        cumDist[i] = d;
+      }
+    }
+    rsrc.mem = { boostPk: null, iatPk: null, runSince: 0, idleSince: 0 };
+    rTile.sig = "";
+    const pages = allowedPages().filter(p => p !== 8);                // the keypad page does nothing in a replay
+    const want = +(localStorage.getItem("replayPage") || pages[0]);
+    $l("rPage").innerHTML = pages.map(p => `<option value="${p}">${PAGES[p]}</option>`).join("");
+    $l("rPage").value = pages.includes(want) ? want : pages[0];
+  }
+
   function feedReplay(i) {
-    const g = id => (L.data[id] ? L.data[id][i] : NaN), ok = v => !isNaN(v), now = performance.now();
+    const g = id => (L.data[id] ? L.data[id][i] : NaN), ok = v => !isNaN(v);
     const be = (d, o, v) => { v = Math.round(v) & 0xFFFF; d[o] = v >> 8; d[o + 1] = v & 255; };
-    const put = (id, fill) => { const d = new Uint8Array(8); if (fill(d)) frames[id] = { data: d, t: now }; else delete frames[id]; };
+    const fr = rsrc.frames;
+    for (const k in fr) delete fr[k];
+    const put = (id, fill) => { const d = new Uint8Array(8); if (fill(d)) fr[id] = { data: d, t: 0 }; };
     put(0x360, d => { if (!ok(g(0))) return false; be(d, 0, g(0)); be(d, 2, ((ok(g(1)) ? g(1) : 0) + 101.3) * 10); be(d, 4, (ok(g(14)) ? g(14) : 0) * 10); be(d, 6, ok(g(9)) ? (g(9) + 101.3) * 10 : 0); return true; });
     put(0x361, d => { if (!ok(g(6)) && !ok(g(10))) return false; be(d, 0, ok(g(10)) ? (g(10) + 101.3) * 10 : 0); be(d, 2, ok(g(6)) ? (g(6) + 101.3) * 10 : 0); return true; });
     put(0x362, d => { if (!ok(g(11))) return false; be(d, 0, g(11) * 10); be(d, 4, ok(g(17)) ? g(17) * 10 : 0); return true; });
@@ -370,18 +407,37 @@ const Logs = (() => {
     put(0x3E0, d => { if (!ok(g(8)) && !ok(g(7)) && !ok(g(12))) return false; be(d, 0, ok(g(8)) ? (g(8) + 273.15) * 10 : 0); be(d, 2, ok(g(12)) ? (g(12) + 273.15) * 10 : 0); be(d, 6, ok(g(7)) ? (g(7) + 273.15) * 10 : 0); return true; });
     put(0x3E1, d => { if (!ok(g(5))) return false; be(d, 4, g(5) * 10); return true; });
     put(0x3E9, d => { if (!ok(g(4))) return false; be(d, 4, g(4) * 1000); return true; });
-    if (L.hasGps) Object.assign(gpsStatus, { fix: !isNaN(L.lat[i]) ? 1 : 0, lat: L.lat[i], lon: L.lon[i], lap: L.lap[i], t: now, gates: 1,
-      cur: (() => { const l = L.laps.find(q => i >= q.i0 && i < q.i1); return l ? Math.round((L.t[i] - L.t[l.i0]) * 1000) : 0; })(),
-      last: (() => { const p = L.laps.filter(q => q.i1 <= i); return p.length ? p[p.length - 1].ms : 0; })(),
-      best: (() => { const p = L.laps.filter(q => q.i1 <= i); return p.length ? Math.min(...p.map(q => q.ms)) : 0; })(), delta: null, progress: 0 });
-    gaugeStatus.kmh = ok(g(15)) ? g(15) : null; gaugeStatus.gear = ok(g(16)) ? g(16) : null; gaugeStatus.t = now;
-    gaugeStatus.warn = L.w[i];
+
+    const st = rsrc.status;
+    st.kmh = ok(g(15)) ? g(15) : null; st.gear = ok(g(16)) ? g(16) : null; st.warn = L.w[i]; st.t = 1;
+    st.held = 0; st.sim = 0; st.log = 0;
+    rsrc.warns = WARN_NAMES.map((name, b) => ({ name, val: "", unit: "", b })).filter(w => L.w[i] & (1 << w.b)).slice(0, 3);
+    rsrc.mem.boostPk = pkBoost && !isNaN(pkBoost[i]) ? pkBoost[i] : null;
+    rsrc.mem.iatPk = pkIat && !isNaN(pkIat[i]) ? pkIat[i] : null;
+
+    if (L.hasGps) {
+      const lapNow = L.laps.find(q => i >= q.i0 && i < q.i1), done = L.laps.filter(q => q.i1 <= i);
+      const best = done.length ? done.reduce((a, q) => q.ms < a.ms ? q : a) : null;
+      let delta = null, progress = 0;
+      if (lapNow && best) {                                           // same idea as the gauge: time the best lap took to cover this distance
+        const dist = cumDist[i] - cumDist[lapNow.i0], bestLen = cumDist[best.i1 - 1] - cumDist[best.i0];
+        if (bestLen > 10) {
+          let lo = best.i0, hi = best.i1 - 1;
+          while (lo < hi) { const m = (lo + hi) >> 1; if (cumDist[m] - cumDist[best.i0] < dist) lo = m + 1; else hi = m; }
+          delta = Math.round(((L.t[i] - L.t[lapNow.i0]) - (L.t[lo] - L.t[best.i0])) * 1000);
+          progress = Math.min(255, Math.round(dist / bestLen * 255));
+        }
+      }
+      Object.assign(rsrc.gps, { fix: ok(L.lat[i]) ? 1 : 0, lat: L.lat[i], lon: L.lon[i], lap: L.lap[i], t: 1, gates: 1,
+        cur: lapNow ? Math.round((L.t[i] - L.t[lapNow.i0]) * 1000) : 0,
+        last: done.length ? done[done.length - 1].ms : 0, best: best ? best.ms : 0, delta, progress });
+    } else Object.assign(rsrc.gps, { fix: 0, lap: 0, gates: 0, t: 1 });
   }
-  function setReplay(on) {
-    replayOn = on;
-    $l("logReplay").textContent = on ? "Gauge tab: log" : "Gauge tab: live";
-    $l("logReplay").classList.toggle("pink", on);
-    if (on && L) feedReplay(idxAt(cur)); else for (const k in frames) delete frames[k];
+
+  function drawFace() {
+    const c = $l("rFace");
+    if (!c || !L || c.offsetParent === null) return;                  // not on screen
+    GaugeView.render(+$l("rPage").value, c.getContext("2d"), rTile, Object.assign({ src: rsrc }, faceOpts(c.clientWidth)));
   }
 
   // ---------------- Logging settings (Setup tab) ----------------
@@ -441,11 +497,11 @@ const Logs = (() => {
     $l("logPlay").onclick = () => L && setPlay(!playing);
     document.querySelectorAll("[data-sp]").forEach(b => b.onclick = () => { speed = +b.dataset.sp; document.querySelectorAll("[data-sp]").forEach(o => o.classList.toggle("ghost", o !== b)); });
     $l("logMode").onclick = () => { lanes = !lanes; $l("logMode").textContent = lanes ? "Lanes" : "Overlay"; draw(); };
-    $l("logReplay").onclick = () => setReplay(!replayOn);
-    $l("logClose").onclick = () => { setPlay(false); setReplay(false); L = null; $l("viewer").hidden = true; };
+    $l("rPage").onchange = () => { localStorage.setItem("replayPage", $l("rPage").value); rTile.sig = ""; drawFace(); };
+    $l("logClose").onclick = () => { setPlay(false); L = null; $l("viewer").hidden = true; };
     window.addEventListener("resize", draw);
     renderFiles();
   }
 
-  return { init, refresh, onChunk, renderSettings, get replaying() { return replayOn; }, get status() { return status; } };
+  return { init, refresh, onChunk, renderSettings, get status() { return status; } };
 })();

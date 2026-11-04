@@ -134,10 +134,28 @@ const GaugeView = (() => {
     drawText(t, CX, ty + TH / 2, CELL_MED, C_BG, 1);
   }
 
+  // ---------------- Data sources ----------------
+  // A face draws from one data source. LIVE is what the gauge (or Demo mode) is sending right now.
+  // The log viewer makes its own source with makeSource(true), so replaying a log never touches the
+  // live data and nothing live (gauge, simulator, demo) can overwrite it. A replay source is always
+  // treated as fresh, so a paused replay keeps showing its values instead of going blank.
+  // Each source keeps its own peaks and face-mood timers.
+  const newMem = () => ({ boostPk: null, iatPk: null, runSince: 0, idleSince: 0 });
+  function makeSource(replay) {
+    return { replay: !!replay, frames: {}, status: { kmh: null, gear: null, held: 0, sim: 0, warn: 0, log: 0, t: 0 },
+      gps: { fix: 0, sats: 0, lat: 0, lon: 0, kmh: 0, course: 0, lap: 0, cur: 0, last: 0, best: 0, delta: null, sector: 0, progress: 0, gates: 0, t: 0 },
+      warns: [], mem: newMem() };
+  }
+  const liveMem = newMem();
+  const LIVE = { replay: false, get frames() { return frames; }, get status() { return gaugeStatus; }, get gps() { return gpsStatus; },
+    get warns() { return diagWarns; }, mem: liveMem };
+  let cur = LIVE;                                  // source being drawn (render() is synchronous)
+
   // ---------------- Data ----------------
   const be16 = (d, o) => (d[o] << 8) | d[o + 1];
   function readData() {
-    const now = performance.now(), fr = id => { const f = frames[id]; return f && now - f.t < 1000 ? f.data : null; };
+    const now = performance.now(), R = cur.replay, gs = cur.status;
+    const fr = id => { const f = cur.frames[id]; return f && (R || now - f.t < 1000) ? f.data : null; };
     const a = fr(0x360), b = fr(0x361), c = fr(0x362), l = fr(0x368), t = fr(0x372), e = fr(0x3E0), e1 = fr(0x3E1), tl = fr(0x3E9);
     const baro = t ? be16(t, 6) / 10 : 101.3;
     const d = {
@@ -147,8 +165,8 @@ const GaugeView = (() => {
       batt: t ? be16(t, 0) / 10 : null, tgtBoost: t ? be16(t, 4) / 10 : null,
       clt: e ? be16(e, 0) / 10 - 273.15 : null, iat: e ? be16(e, 2) / 10 - 273.15 : null, oilT: e ? be16(e, 6) / 10 - 273.15 : null,
       eth: e1 ? be16(e1, 4) / 10 : null, tgtLam: tl ? be16(tl, 4) / 1000 : null,
-      kmh: gaugeStatus.t && now - gaugeStatus.t < 2000 ? gaugeStatus.kmh : null,
-      gear: gaugeStatus.t && now - gaugeStatus.t < 2000 ? gaugeStatus.gear : null,
+      kmh: gs.t && (R || now - gs.t < 2000) ? gs.kmh : null,
+      gear: gs.t && (R || now - gs.t < 2000) ? gs.gear : null,
     };
     if (d.cltP !== null && d.cltP < -50) d.cltP = null;
     if (d.fuelP !== null && d.fuelP < -50) d.fuelP = null;
@@ -171,8 +189,6 @@ const GaugeView = (() => {
   const g = (v, f) => v === null ? "--" : String(f(v));
   const fmtL = v => { let s = (Math.round(v * 100) / 100).toString(); return s; };
 
-  let boostPk = null, iatPk = null;
-
   function scale(min, step, dp) {
     return [0, 1, 2, 3, 4].map(k => { const v = min + k * step; return dp < 0 ? fmtL(v) : v.toFixed(dp); });
   }
@@ -194,6 +210,7 @@ const GaugeView = (() => {
     const s = { mode: "gauge", title: "", lbl: ["", "", "", "", ""], seg: new Array(NSEG).fill(0), centre: "--", cw: false, unit: "", rows: [["", "", false], ["", "", false]] };
     const on = k => st(k + "_on");
     const run = d.rpm !== null && d.rpm > 400;
+    const boostPk = cur.mem.boostPk, iatPk = cur.mem.iatPk, gs = cur.status, gp = cur.gps;
     switch (type) {
       case 0: {          // boost
         const pu = st("pu"), mn = pu == 0 ? -100 : pu == 1 ? -1 : -10, step = pu == 0 ? 100 : pu == 1 ? 1 : 10;
@@ -273,42 +290,43 @@ const GaugeView = (() => {
       case 8: {          // keypad
         s.mode = "keypad";
         s.tgt = d.tgtBoost === null ? "TGT --" : `TGT ${fmtP(d.tgtBoost, 2)} ${pUnit()}`;
-        s.idle = !!((gaugeStatus.held >> 2) & 1);
-        s.log = !(gaugeStatus.log & 1) ? 0 : (gaugeStatus.log & 2) ? 2 : 1;
+        s.idle = !!((gs.held >> 2) & 1);
+        s.log = !(gs.log & 1) ? 0 : (gs.log & 2) ? 2 : 1;
         break;
       }
       case 10: {         // lap timer (gauge GPS)
         s.title = "LAP";
-        const fix = gpsStatus.fix && performance.now() - gpsStatus.t < 2000;
-        s.seg = ring(0, 255, fix && gpsStatus.lap > 0 && gpsStatus.progress > 0 ? gpsStatus.progress : null, null, 0, 0);
+        const fix = gp.fix && (cur.replay || performance.now() - gp.t < 2000);
+        s.seg = ring(0, 255, fix && gp.lap > 0 && gp.progress > 0 ? gp.progress : null, null, 0, 0);
         const lt = ms => !ms ? "--" : `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}.${Math.floor(ms / 100) % 10}`;
         s.big = 10; s.rowCell = 2.5;
-        s.centre = fix && gpsStatus.lap > 0 ? lt(gpsStatus.cur) : "--";
+        s.centre = fix && gp.lap > 0 ? lt(gp.cur) : "--";
         if (!fix) s.unit = "NO GPS";
-        else if (!gpsStatus.gates) s.unit = "HOLD = S/F";
-        else if (!gpsStatus.lap) s.unit = "CROSS S/F";
-        else if (gpsStatus.delta !== null) { const d = gpsStatus.delta; s.unit = (d < 0 ? "-" : "+") + (Math.abs(d) / 1000).toFixed(2); s.cw = d > 0; }
-        else s.unit = "LAP " + gpsStatus.lap;
-        s.rows = [["LAST", lt(gpsStatus.last), false], ["BEST", lt(gpsStatus.best), false]];
+        else if (!gp.gates) s.unit = "HOLD = S/F";
+        else if (!gp.lap) s.unit = "CROSS S/F";
+        else if (gp.delta !== null) { const d = gp.delta; s.unit = (d < 0 ? "-" : "+") + (Math.abs(d) / 1000).toFixed(2); s.cw = d > 0; }
+        else s.unit = "LAP " + gp.lap;
+        s.rows = [["LAST", lt(gp.last), false], ["BEST", lt(gp.best), false]];
         break;
       }
       case 11: {         // face: reacts to the car (same rules as the gauge)
         s.mode = "face";
         const now = performance.now(), run = d.rpm !== null && d.rpm >= 100;
         const red = st("w_shift_on") ? st("w_shift") : st("tachmax") * 0.85;
-        if (run) { if (!runSince) runSince = now; } else runSince = 0;
+        const m = cur.mem;
+        if (run) { if (!m.runSince) m.runSince = now; } else m.runSince = 0;
         const idling = run && d.rpm < 1500 && (d.kmh === null || d.kmh < 3);
-        if (idling) { if (!idleSince) idleSince = now; } else idleSince = 0;
-        s.mood = gaugeStatus.warn ? 6 : !run ? 0 : now - runSince < 4000 ? 7 : d.rpm >= red ? 4 : d.boost !== null && d.boost >= 34.5 ? 3
+        if (idling) { if (!m.idleSince) m.idleSince = now; } else m.idleSince = 0;
+        s.mood = gs.warn ? 6 : !run ? 0 : now - m.runSince < 4000 ? 7 : d.rpm >= red ? 4 : d.boost !== null && d.boost >= 34.5 ? 3
           : d.rpm > 2500 && d.tps !== null && d.tps < 3 && d.boost !== null && d.boost < 0 ? 10 : d.kmh !== null && d.kmh >= 120 ? 9
           : d.gear !== null && d.gear < 0 ? 11 : d.clt !== null && d.clt >= 95 ? 8 : d.clt !== null && d.clt < 60 ? 5
-          : d.rpm > 1500 ? 2 : idleSince && now - idleSince > 60000 ? 12 : 1;
+          : d.rpm > 1500 ? 2 : m.idleSince && now - m.idleSince > 60000 ? 12 : 1;
         s.line = `${d.rpm === null ? "--" : d.rpm} RPM  ${g(d.boost, v => fmtP(v, 2))} ${pUnit()}`;
         break;
       }
       case 9: {          // alerts
         s.mode = "alerts";
-        s.lines = (diagWarns || []).slice(0, 3).map(w => `${w.name}  ${w.val} ${w.unit}`.replace("°", "*"));
+        s.lines = (cur.warns || []).slice(0, 3).map(w => `${w.name}  ${w.val} ${w.unit}`.replace("°", "*"));
         break;
       }
     }
@@ -335,7 +353,7 @@ const GaugeView = (() => {
     ["REDLINE", "left", "right", "teeth"], ["COLD", "cold", "cold", "wobble"], ["WARNING", "x", "x", "o"],
     ["HELLO!", "happy", "blink", "smile"], ["HOT", "tired", "tired", "wavy"], ["FAST", "shade", "shade", "smirk"],
     ["POP POP", "happy", "happy", "o"], ["REVERSE", "lookr", "lookr", "flat"], ["BORED", "lidr", "lidr", "flat"]];
-  let nextBlink = 0, blinkEnd = 0, runSince = 0, idleSince = 0;
+  let nextBlink = 0, blinkEnd = 0;
   function blitArt(art, cx, cy, cell, c) {
     const h = art.length, w = art[0].length, x0 = cx - w * cell / 2, y0 = cy - h * cell / 2;
     for (let r = 0; r < h; r++) for (let k = 0; k < w; k++) if (art[r][k] === "#") fillRect(x0 + k * cell, y0 + r * cell, x0 + (k + 1) * cell - 1, y0 + (r + 1) * cell - 1, c);
@@ -446,15 +464,19 @@ const GaugeView = (() => {
   // tile remembers what was last drawn on that canvas, so nothing is redrawn until it changes.
   // opts.clear: no dot grid, black background (easier to read small or in sunlight)
   // opts.simple: small face, so drop the dial numbers and bottom rows and keep the big number
+  // opts.src: where the data comes from (default: live). A replay source has its peaks set by the log viewer.
   function render(type, ctx, tile, opts) {
     opts = opts || {};
-    const d = readData();
-    if (d.boost !== null && (boostPk === null || d.boost > boostPk)) boostPk = d.boost;
-    if (d.iat !== null && (iatPk === null || d.iat > iatPk)) iatPk = d.iat;
+    cur = opts.src || LIVE;
+    const d = readData(), mem = cur.mem;
+    if (!cur.replay) {
+      if (d.boost !== null && (mem.boostPk === null || d.boost > mem.boostPk)) mem.boostPk = d.boost;
+      if (d.iat !== null && (mem.iatPk === null || d.iat > mem.iatPk)) mem.iatPk = d.iat;
+    }
     const s = buildPage(type, d);
     const now = performance.now();
     s.pressed = now < flashUntil ? flashBtn : 0;
-    s.rec = (gaugeStatus.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
+    s.rec = (cur.status.log & 2) && Math.floor(now / 600) % 2 === 0 ? 1 : 0;
     s.shift = st("w_shift_on") && (S && S.shift_show !== undefined ? S.shift_show : 1) && d.rpm !== null && d.rpm >= st("w_shift") && Math.floor(now / 80) % 2 === 0 ? 1 : 0;
     if (s.mode === "face") {
       faceMotion(s, now);
@@ -533,7 +555,7 @@ const GaugeView = (() => {
 
   // Tap on the keypad page sends the same keypad B buttons as the gauge (1 boost +, 2 boost -, 3 rotational idle)
   function tap(type, x, y) {
-    if (type !== 8) return;
+    if (type !== 8) return;                       // (only live faces take taps; the replay face has no input)
     for (let b = 0; b < 4; b++) {
       const [bx, by] = KB[b];
       if (x < bx || x >= bx + KB_W || y < by || y >= by + KB_H) continue;
@@ -545,7 +567,7 @@ const GaugeView = (() => {
     }
   }
 
-  function resetPeak(type) { if (type === 0) boostPk = null; if (type === 6) iatPk = null; }
+  function resetPeak(type) { if (type === 0) liveMem.boostPk = null; if (type === 6) liveMem.iatPk = null; }
 
-  return { render, tap, resetPeak };
+  return { render, tap, resetPeak, makeSource };
 })();

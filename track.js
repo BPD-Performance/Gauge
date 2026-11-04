@@ -48,7 +48,7 @@ const Track = (() => {
 
   function ensureMap() {
     if (map || !window.L || !$t("trkMap")) return map;
-    map = L.map("trkMap", { zoomControl: true, attributionControl: true, worldCopyJump: true }).setView([-25.5, 134], 4);   // Australia until we know where you are
+    map = L.map("trkMap", { zoomControl: true, attributionControl: true, worldCopyJump: true, doubleClickZoom: false }).setView([-25.5, 134], 4);   // Australia until we know where you are
     street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 20, maxNativeZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
     sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { maxZoom: 20, maxNativeZoom: 19, attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics" });
@@ -90,21 +90,53 @@ const Track = (() => {
     else if (gpsStatus.fix) map.setView([gpsStatus.lat, gpsStatus.lon], 16);
   }
 
-  function gateEnds(g) {                      // the two ends of a line, and the tip of its direction arrow
-    const P = proj(g[0], g[1]), b = g[2] * Math.PI / 180, hw = g[3] / 2;
+  const tipDist = g => Math.max(25, g[3] * 0.8);             // length of the direction arrow (m)
+  function gateEnds(g) {                      // the two ends of a line (a = left, b = right as you face the direction of travel), and the tip of its arrow
+    const P = proj(g[0], g[1]), b = g[2] * Math.PI / 180, hw = g[3] / 2, td = tipDist(g);
     const ax = Math.cos(b) * hw, ay = -Math.sin(b) * hw;           // across the direction of travel
-    return { a: P.ll(-ax, -ay), b: P.ll(ax, ay), tip: P.ll(Math.sin(b) * 12, Math.cos(b) * 12) };
+    return { a: P.ll(-ax, -ay), b: P.ll(ax, ay), tip: P.ll(Math.sin(b) * td, Math.cos(b) * td) };
+  }
+  const bearingOf = (from, to) => { const P = proj(from[0], from[1]), [x, y] = P.xy(to[0], to[1]); return (Math.atan2(x, y) * 180 / Math.PI + 360) % 360; };
+
+  // Each line has a centre handle (move), two end handles (resize / turn) and an arrow tip handle (turn).
+  let gl = [], pend = null, pendDot = null;                          // gl[i] = drawn parts of line i; pend = first tap of a two-tap placement
+  const hnd = cls => L.divIcon({ className: "hnd " + cls, iconSize: [28, 28], iconAnchor: [14, 14] });
+
+  function placeGate(i, skip) {                                       // move every part of line i to match cur.g[i]
+    const g = cur.g[i], e = gateEnds(g), h = gl[i];
+    if (!h) return;
+    h.line.setLatLngs([e.a, e.b]); h.arrow.setLatLngs([[g[0], g[1]], e.tip]); h.lbl.setLatLng([g[0], g[1]]);
+    if (skip !== h.hA) h.hA.setLatLng(e.a);
+    if (skip !== h.hB) h.hB.setLatLng(e.b);
+    if (skip !== h.hC) h.hC.setLatLng([g[0], g[1]]);
+    if (skip !== h.hT) h.hT.setLatLng(e.tip);
+  }
+  function makeGate(i) {
+    const g = cur.g[i], e = gateEnds(g), col = i ? PINK2 : PINK;
+    const h = {
+      line: L.polyline([e.a, e.b], { color: col, weight: 5, interactive: false }).addTo(layer),
+      arrow: L.polyline([[g[0], g[1]], e.tip], { color: col, weight: 3, interactive: false }).addTo(layer),
+      lbl: L.marker([g[0], g[1]], { interactive: false, icon: L.divIcon({ className: "gateLbl", html: `<span style="color:${col}">${i ? "S" + i : "S/F"}</span>`, iconSize: [40, 16], iconAnchor: [-18, 26] }) }).addTo(layer),
+      hA: L.marker(e.a, { draggable: true, icon: hnd("end"), title: "Left edge: drag to resize or turn" }).addTo(layer),
+      hB: L.marker(e.b, { draggable: true, icon: hnd("end"), title: "Right edge: drag to resize or turn" }).addTo(layer),
+      hC: L.marker([g[0], g[1]], { draggable: true, icon: hnd("mid"), title: "Drag to move the line" }).addTo(layer),
+      hT: L.marker(e.tip, { draggable: true, icon: hnd("tip"), title: "Drag the arrow to turn the line" }).addTo(layer),
+    };
+    gl[i] = h;
+    const done = () => { renderGates(); };
+    h.hA.on("drag", () => { const b = gateEnds(cur.g[i]).b; cur.g[i] = gateFromEnds([h.hA.getLatLng().lat, h.hA.getLatLng().lng], b); placeGate(i, h.hA); });
+    h.hB.on("drag", () => { const a = gateEnds(cur.g[i]).a; cur.g[i] = gateFromEnds(a, [h.hB.getLatLng().lat, h.hB.getLatLng().lng]); placeGate(i, h.hB); });
+    h.hC.on("drag", () => { const p = h.hC.getLatLng(); cur.g[i][0] = +p.lat.toFixed(7); cur.g[i][1] = +p.lng.toFixed(7); placeGate(i, h.hC); });
+    h.hT.on("drag", () => { const p = h.hT.getLatLng(); cur.g[i][2] = +bearingOf([cur.g[i][0], cur.g[i][1]], [p.lat, p.lng]).toFixed(1); placeGate(i, h.hT); });
+    [h.hA, h.hB, h.hC, h.hT].forEach(m => m.on("dragend", () => { placeGate(i); done(); }));
   }
   function draw() {
     if (!ensureMap()) return;
     layer.clearLayers();
+    gl = [];
     (cur.outline || []).forEach(w => L.polyline(w, { color: AMBER, weight: 4, opacity: 0.9, interactive: false }).addTo(layer));
-    cur.g.forEach((g, i) => {
-      const e = gateEnds(g), col = i ? PINK2 : PINK;
-      L.polyline([e.a, e.b], { color: col, weight: 5, interactive: false }).addTo(layer);
-      L.polyline([[g[0], g[1]], e.tip], { color: col, weight: 3, interactive: false }).addTo(layer);
-      L.marker([g[0], g[1]], { interactive: false, icon: L.divIcon({ className: "gateLbl", html: `<span style="color:${col}">${i ? "S" + i : "S/F"}</span>`, iconSize: [40, 16], iconAnchor: [-8, 20] }) }).addTo(layer);
-    });
+    cur.g.forEach((g, i) => makeGate(i));
+    pendDot = pend ? L.circleMarker(pend, { radius: 8, color: "#fff", weight: 3, fillColor: PINK, fillOpacity: 1, interactive: false }).addTo(layer) : null;
     gpsDot = null;
     drawGps();
   }
@@ -116,9 +148,37 @@ const Track = (() => {
     else gpsDot.setLatLng([gpsStatus.lat, gpsStatus.lon]);
   }
 
-  // Tap: place a line across the outline at the nearest point, facing along it.
-  // Away from the outline, the line goes where you tapped, facing the same way as start/finish.
+  // Placing a line. Default: two taps, the LEFT edge of the track and then the RIGHT edge, as if you were
+  // driving along it. That gives the position, the width and the direction of travel (square across the
+  // two taps), so a line can face any way. The other way: one tap near a loaded circuit outline, which
+  // snaps to it and faces along it.
+  const say = t => { $t("trkMsg").textContent = t; };
+  function cancelPend() { pend = null; if ($t("trkCancel")) $t("trkCancel").hidden = true; }
+  function addGate(gate) {
+    if (mode === "sf") { if (cur.g.length) cur.g[0] = gate; else cur.g.push(gate); }
+    else { if (!cur.g.length) { say("Place the start/finish first."); return false; } if (cur.g.length < 9) cur.g.push(gate); else { say("That's the most lines the gauge can hold (start/finish plus 8 sectors)."); return false; } }
+    return true;
+  }
   function tapAt(lat, lon) {
+    if ($t("trkPlace").value === "snap") return snapAt(lat, lon);
+    if (mode !== "sf" && !cur.g.length) { say("Place the start/finish first."); return; }
+    const what = mode === "sf" ? "start/finish" : "sector";
+    if (!pend) {                                                    // first tap: left edge
+      pend = [lat, lon]; $t("trkCancel").hidden = false;
+      say(`Now tap the RIGHT edge of the track (the left edge is marked). Facing the way you drive, left comes first, then right.`);
+      draw(); return;
+    }
+    const [wx, wy] = proj(pend[0], pend[1]).xy(lat, lon), width = Math.hypot(wx, wy);
+    if (width < 3) { say("Those taps are too close together. Tap the other side of the track."); return; }
+    const gate = gateFromEnds(pend, [lat, lon]);
+    cancelPend();
+    if (!addGate(gate)) { draw(); return; }
+    say(`${what === "sector" ? "Sector" : "Start/finish"} line placed, ${Math.round(gate[3])} m wide, heading ${Math.round(gate[2])}°.` +
+      (gate[3] > 80 ? " That's a wide line: make sure it only crosses the track once." : " Drag its handles or edit the numbers below to adjust. Check the arrow points the way you drive."));
+    renderGates(); draw();
+  }
+  function snapAt(lat, lon) {                                       // one tap: snap to the outline, face along it
+    if (!(cur.outline || []).length) { say("No circuit outline loaded. Use Find circuit here, or switch Placement to two taps."); return; }
     const P = proj(lat, lon);
     let best = null;
     (cur.outline || []).forEach(w => {
@@ -130,20 +190,26 @@ const Track = (() => {
         if (!best || d < best.d) best = { d, qx, qy, br: (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360 };
       }
     });
-    let br = cur.g.length ? cur.g[0][2] : 0;                      // away from the outline: same way as start/finish
-    if (best && best.d < 40) {                                     // snap within 40 m, facing along the outline
-      [lat, lon] = P.ll(best.qx, best.qy); br = best.br;
-      if ($t("trkRev").checked) br = (br + 180) % 360;            // OSM ways may run against the race direction
-    }
+    if (!best || best.d >= 40) { say("That's more than 40 m from the outline. Tap closer to it, or switch Placement to two taps."); return; }
+    [lat, lon] = P.ll(best.qx, best.qy);
+    let br = best.br;
+    if ($t("trkRev").checked) br = (br + 180) % 360;               // OSM ways may run against the race direction
     const gate = [+lat.toFixed(7), +lon.toFixed(7), +br.toFixed(1), +$t("trkWidth").value || 25];
-    if (mode === "sf") { if (cur.g.length) cur.g[0] = gate; else cur.g.push(gate); }
-    else { if (!cur.g.length) { $t("trkMsg").textContent = "Place the start/finish first."; return; } if (cur.g.length < 9) cur.g.push(gate); }
+    if (!addGate(gate)) return;
+    say(`Line snapped to the outline, heading ${Math.round(br)}°. Check the arrow points the way you drive.`);
     renderGates(); draw();
   }
 
   function renderGates() {
-    $t("trkGates").innerHTML = cur.g.length ? cur.g.map((g, i) => `<div class="lrow"><span>${i ? "Sector " + i : "Start/finish"}</span><span class="sm">${g[0].toFixed(5)}, ${g[1].toFixed(5)}  ${Math.round(g[2])}°</span><button class="btn ghost red" data-gdel="${i}" type="button" style="min-height:30px">X</button></div>`).join("")
+    $t("trkGates").innerHTML = cur.g.length ? cur.g.map((g, i) => `<div class="lrow" style="flex-wrap:wrap;gap:8px"><span>${i ? "Sector " + i : "Start/finish"}</span>
+      <span class="gctl"><input class="num" data-gh="${i}" value="${Math.round(g[2])}" inputmode="numeric" aria-label="Direction of travel in degrees"> ° <input class="num" data-gw="${i}" value="${Math.round(g[3])}" inputmode="numeric" aria-label="Line width in metres"> m
+      <button class="btn ghost" data-gflip="${i}" type="button" style="min-height:30px" aria-label="Flip direction">Flip</button><button class="btn ghost red" data-gdel="${i}" type="button" style="min-height:30px" aria-label="Delete line">X</button></span>
+      <span class="sm" style="flex-basis:100%">${g[0].toFixed(5)}, ${g[1].toFixed(5)}  heading 0° = north, 90° = east, 180° = south, 270° = west</span></div>`).join("")
       : `<div class="empty">No lines yet.</div>`;
+    const norm = d => ((d % 360) + 360) % 360;
+    document.querySelectorAll("[data-gh]").forEach(e => e.onchange = () => { const v = parseFloat(e.value); if (!isNaN(v)) { cur.g[+e.dataset.gh][2] = +norm(v).toFixed(1); renderGates(); draw(); } });
+    document.querySelectorAll("[data-gw]").forEach(e => e.onchange = () => { const v = parseFloat(e.value); if (!isNaN(v)) { cur.g[+e.dataset.gw][3] = Math.min(300, Math.max(5, v)); renderGates(); draw(); } });
+    document.querySelectorAll("[data-gflip]").forEach(b => b.onclick = () => { const g = cur.g[+b.dataset.gflip]; g[2] = +norm(g[2] + 180).toFixed(1); renderGates(); draw(); });
     document.querySelectorAll("[data-gdel]").forEach(b => b.onclick = () => { const i = +b.dataset.gdel; if (i === 0) cur.g = []; else cur.g.splice(i, 1); renderGates(); draw(); });
   }
   function renderLib() {
@@ -157,7 +223,9 @@ const Track = (() => {
   }
 
   async function send(t) {
-    try { const r = await cmd({ cmd: "trkset", name: (t.name || "Track").slice(0, 23), g: t.g }); $t("trkMsg").textContent = r.ok ? "Sent to the gauge." : "Not sent: " + r.err; }
+    // The gauge reads the command with a simple parser: keep quotes, braces and brackets out of the name
+    const nm = (t.name || "Track").replace(/["\\{}\[\]\u0000-\u001f]/g, "").trim().slice(0, 23) || "Track";
+    try { const r = await cmd({ cmd: "trkset", name: nm, g: t.g }); $t("trkMsg").textContent = r.ok ? "Sent to the gauge." : "Not sent: " + r.err; }
     catch (e) { $t("trkMsg").textContent = "Not sent: " + e.message; }
   }
 
@@ -289,7 +357,7 @@ const Track = (() => {
   let editIdx = -1;                            // library entry being edited (-1 = new)
   function openTrack(i) {
     if (i < 0) return;
-    editIdx = i;
+    editIdx = i; cancelPend();
     cur = JSON.parse(JSON.stringify(lib[i]));
     $t("trkName").value = cur.name || "";
     $t("trkRev").checked = false;
@@ -313,7 +381,7 @@ const Track = (() => {
       <div class="block"><h2>Track</h2>
       <p class="lead msg" id="trkEditing">New track. Give it a name, find the circuit or tap the map, then save it to the library.</p>
       <div class="grid"><div><label for="trkName">Name</label><input id="trkName" placeholder="Sandown"></div>
-        <div><label for="trkWidth">Timing line width (m)</label><input id="trkWidth" style="text-align:right" value="25" inputmode="numeric"></div></div>
+        <div><label for="trkWidth">Width for one-tap lines (m)</label><input id="trkWidth" style="text-align:right" value="25" inputmode="numeric"></div></div>
       <div class="actions" style="margin:10px 0">
         <button class="btn" id="trkFind" type="button">Find circuit here</button>
         <button class="btn ghost" id="trkLoad" type="button">Load from gauge</button>
@@ -321,15 +389,18 @@ const Track = (() => {
       </div>
       </div>
       <div class="block"><h2>Timing lines</h2>
-      <p class="lead">Each start/finish or sector line is an invisible line across the track. The timing line width is how long that line is, edge to edge: the GPS has to pass through it to count a lap or sector. Make it a bit wider than the track at that spot (25 m suits most circuits) so a wide line or GPS drift still counts, but not so wide that it catches another part of the track or the pit lane. It's set when you place a line, so change it before tapping.</p>
+      <p class="lead">Each start/finish or sector line is an invisible line across the track. The GPS has to cross it in the direction of the arrow to count a lap or sector, so the arrow must point the way you drive. To place one, tap the LEFT edge of the track and then the RIGHT edge, as if you were driving along it; the line's width and direction come from those two taps, so it can face any way. Make it a bit wider than the track (about 25 m suits most circuits) so GPS drift still counts, but not so wide that it catches another part of the track or the pit lane. Afterwards, drag the round handles on the map (middle moves it, the ends resize it, the arrow tip turns it) or type a heading and width below.</p>
       <div class="seg" id="trkMode"><button class="btn" data-tm="sf" type="button">Tap = start/finish</button><button class="btn ghost" data-tm="sec" type="button">Tap = sector</button></div>
-      <label class="ck2" style="margin:14px 0"><input type="checkbox" id="trkRev"> Race direction is the other way (flips every line)</label>
+      <div class="grid" style="margin:14px 0 0;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"><div><label for="trkPlace">Placement</label>
+        <select id="trkPlace"><option value="two">Two taps: left edge, then right edge</option><option value="snap">One tap on a loaded circuit outline</option></select></div></div>
+      <label class="ck2" style="margin:14px 0"><input type="checkbox" id="trkRev"> Race direction is the other way (turns every line round)</label>
       <div class="grid" style="margin:14px 0 10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"><div><label for="trkView">Map view</label>
         <select id="trkView"><option value="hybrid">Hybrid (satellite + names)</option><option value="sat">Satellite</option><option value="street">Street map</option></select></div>
         <div id="trkTintBox"><label for="trkTint">Street map colour</label><select id="trkTint"><option value="1">Amber</option><option value="0">Normal</option></select></div></div>
       <div id="trkMap" class="trkmap"></div>
       <div class="actions" style="margin:8px 0"><button class="btn ghost" id="trkMe" type="button">Go to me</button><button class="btn ghost red" id="trkTiles" type="button">Clear saved maps</button></div>
-      <p class="lead msg" id="trkMsg" role="status">Tap the map to place each line (it snaps to the outline if there is one). You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
+      <p class="lead msg" id="trkMsg" role="status">Tap the LEFT edge of the track, then the RIGHT edge, as if you were driving along it. You can also hold the gauge's LAP page for 2 seconds as you drive over a spot.</p>
+      <div class="actions" style="margin:0 0 8px"><button class="btn ghost" id="trkCancel" type="button" hidden>Cancel this line</button></div>
       <div class="list" id="trkGates"></div>
       <div class="actions"><button class="btn pink" id="trkSend" type="button">Send track to gauge</button><button class="btn ghost" id="trkSave" type="button">Save to library</button><button class="btn ghost red" id="trkClr" type="button">Clear gauge track</button></div>
       </div>
@@ -347,8 +418,11 @@ const Track = (() => {
     };
     $t("trkFind").onclick = async () => { try { const [la, lo] = await herePos(); await findOutline(la, lo); } catch (e) { $t("trkMsg").textContent = "No position: " + e.message; } };
     $t("trkLoad").onclick = async () => { try { const r = await cmd({ cmd: "trkget" }); if (r.ok) { editIdx = lib.findIndex(t => t.name === r.track.name); cur = { name: r.track.name, g: r.track.g, outline: cur.outline }; $t("trkName").value = cur.name; $t("trkRev").checked = false; fitView(); renderGates(); draw(); } } catch (e) { alert(e.message); } };
-    $t("trkNew").onclick = () => { editIdx = -1; cur = { name: "", g: [] }; $t("trkName").value = ""; $t("trkRev").checked = false; $t("trkEditing").textContent = "New track. Give it a name, find the circuit or tap the map, then save it to the library."; renderGates(); draw(); };
-    $t("trkMode").querySelectorAll("button").forEach(b => b.onclick = () => { mode = b.dataset.tm; $t("trkMode").querySelectorAll("button").forEach(o => o.classList.toggle("ghost", o !== b)); });
+    $t("trkNew").onclick = () => { cancelPend(); editIdx = -1; cur = { name: "", g: [] }; $t("trkName").value = ""; $t("trkRev").checked = false; $t("trkEditing").textContent = "New track. Give it a name, find the circuit or tap the map, then save it to the library."; renderGates(); draw(); };
+    $t("trkMode").querySelectorAll("button").forEach(b => b.onclick = () => { mode = b.dataset.tm; cancelPend(); draw(); $t("trkMode").querySelectorAll("button").forEach(o => o.classList.toggle("ghost", o !== b)); });
+    $t("trkPlace").value = localStorage.getItem("trkPlace") || "two";
+    $t("trkPlace").onchange = () => { localStorage.setItem("trkPlace", $t("trkPlace").value); cancelPend(); draw(); };
+    $t("trkCancel").onclick = () => { cancelPend(); say("Cancelled."); draw(); };
     $t("trkRev").onchange = () => { cur.g.forEach(g => g[2] = +((g[2] + 180) % 360).toFixed(1)); renderGates(); draw(); };   // flip every line now
     $t("trkView").value = localStorage.getItem("mapLayer") || "hybrid";
     $t("trkView").onchange = () => setLayer($t("trkView").value);

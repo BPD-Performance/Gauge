@@ -91,6 +91,15 @@ input[type=checkbox]:checked,.dx.on{background-image:url("data:image/svg+xml,%3C
 .seg{display:flex;gap:6px}.seg .btn{min-height:36px;font-size:13px;flex:1}
 #logCv{display:block;width:100%;height:260px;border:2px solid var(--line);touch-action:none;cursor:col-resize}
 .vbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}.vbar .btn{min-height:36px;font-size:12px;padding:0 10px}
+.rcard{border:2px solid var(--pink);background:var(--bg);margin:12px 0;padding:0 0 10px}
+.rtag{background:var(--pink);color:#fff;font:13px var(--dot);padding:4px 10px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.rtag select{width:auto;min-height:32px;padding:2px 6px;font-size:12px;background:var(--pink);color:#fff;border-color:#fff}
+.rtag select option{background:var(--bg);color:var(--amber)}
+.rface{display:block;aspect-ratio:1;border-radius:50%;border:3px solid #222;width:min(92%,360px);margin:10px auto 0}
+.hnd{border-radius:50%;box-sizing:border-box;border:3px solid #fff;cursor:grab;touch-action:none}
+.hnd.end{background:var(--amber)}.hnd.mid{background:var(--pink)}.hnd.tip{background:#fff;border-color:var(--pink)}
+.gctl{display:flex;gap:6px;align-items:center}.gctl .num{width:64px;min-height:34px;padding:2px 6px;text-align:right}
+.srcTag{display:inline-block;font:12px var(--dot);padding:2px 10px;margin:0 0 8px;background:var(--pink);color:#fff}
 #logRead{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font:11px var(--dot);margin:8px 0}
 .pg{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font:14px var(--dot)}
 .mv{width:44px;height:44px;border:2px solid var(--line);background:var(--bg);color:var(--amber);font:inherit;border-radius:0}
@@ -167,6 +176,7 @@ details.sec[open]>summary .pm::before{content:"-"}
   <button class="btn ghost" id="gFull" type="button">Full screen</button>
   <span id="gCap"></span>
  </div>
+ <div id="srcBanner" class="srcTag" hidden></div>
  <p class="lead">Add as many gauges as fit this screen; how big they are and the display style are set per device in the Device tab. Swipe a gauge to change its page, or use Edit. On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
  <div class="faces" id="faces"></div>
 </section>
@@ -231,22 +241,25 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="list" id="localList"></div>
  <div id="viewer" hidden>
   <h2 id="logTitle">Log</h2>
-  <div class="vbar"><button class="btn ghost" id="logMode" type="button">Overlay</button><button class="btn ghost" id="logReplay" type="button">Gauge tab: live</button><button class="btn ghost" id="logClose" type="button">Close</button></div>
+  <div class="vbar"><button class="btn ghost" id="logMode" type="button">Overlay</button><button class="btn ghost" id="logClose" type="button">Close</button></div>
   <div id="logRead"></div>
   <canvas id="logCv" aria-label="Log graph"></canvas>
-  <div id="logMapBox" hidden>
-   <canvas id="logMap" aria-label="GPS track map" style="display:block;width:100%;height:240px;border:2px solid var(--line);margin-top:8px;cursor:pointer"></canvas>
-   <div id="logLaps" style="margin-top:8px"></div>
-  </div>
   <div class="vbar">
    <button class="btn pink" id="logPlay" type="button">Play</button>
    <button class="btn ghost" data-sp="1" type="button">1x</button><button class="btn" data-sp="2" type="button">2x</button><button class="btn ghost" data-sp="4" type="button">4x</button>
    <button class="btn ghost" id="zOut" type="button" aria-label="Zoom out">-</button><button class="btn ghost" id="zIn" type="button" aria-label="Zoom in">+</button><button class="btn ghost" id="zFit" type="button">Fit</button>
    <span id="logTime" style="margin-left:auto;font:14px var(--dot)">0:00.0</span>
   </div>
+  <div class="rcard" id="rCard">
+   <div class="rtag"><span>REPLAY (not live)</span><select id="rPage" aria-label="Gauge page to replay"></select></div>
+   <canvas class="rface" id="rFace" width="480" height="480" aria-label="Replay gauge face"></canvas>
+  </div>
+  <div id="logMapBox" hidden>
+   <canvas id="logMap" aria-label="GPS track map" style="display:block;width:100%;height:240px;border:2px solid var(--line);margin-top:8px;cursor:pointer"></canvas>
+   <div id="logLaps" style="margin-top:8px"></div>
+  </div>
   <div id="logChips" class="chipgrid"></div>
-  <p class="lead">Drag the graph to move the cursor, pinch or scroll to zoom. Red marks show where a warning tripped.</p>
-  <p class="lead">"Gauge tab: live / log" chooses what the Gauge tab shows. On log, the gauge faces replay this log at the cursor (live data from the gauge is ignored), so pressing Play replays the session on your gauges. Switch back to live, or close the log, to return to live data.</p>
+  <p class="lead">Drag the graph to move the cursor, pinch or scroll to zoom. Red marks show where a warning tripped. The gauge face above shows the log at the cursor, in the same units as your gauge. Logs are viewed here and in the app only; the gauge itself only records them.</p>
  </div>
 </section>
 

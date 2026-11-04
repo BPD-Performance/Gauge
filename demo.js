@@ -8,6 +8,7 @@ const Demo = (() => {
   const RATIOS = [3.25, 1.95, 1.31, 1.0], DIFF = 4.1, TYRE = 1.95;
   let iat = 32;
   function tick() {
+    if (connected) { stop(); return; }              // a real gauge is connected: never write over its data
     const now = performance.now(), t = ((now - t0) / 1000) % 24;
     let rpm, boost, tps, gear = 1;
     if (t < 6) { rpm = 850 + 20 * Math.sin(t * 5); boost = -60; tps = 0; gear = 0; }

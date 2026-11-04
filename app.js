@@ -66,29 +66,25 @@ function cmd(obj) {
 function onLive(e) {
   const v = e.target.value, n = v.byteLength, now = performance.now();
   const type = v.getUint8(0);
-  const replay = Logs.replaying;                 // log playing on the gauge faces: ignore live engine data
   if (type === 0x01) {
-    if (replay) return;
     for (let o = 2; o + 11 <= n; o += 11) {
       const id = v.getUint16(o, true);
       const data = new Uint8Array(v.buffer, v.byteOffset + o + 3, 8).slice();
       frames[id] = { data, t: now };
     }
   } else if (type === 0x02 && n >= 10) {
-    if (!replay) {
-      const s10 = v.getUint16(2, true), g = v.getInt8(4);
-      gaugeStatus.kmh = s10 === 0xFFFF ? null : s10 / 10;
-      gaugeStatus.gear = g === 0x7F ? null : g;
-      gaugeStatus.warn = n >= 13 ? v.getUint16(11, true) : 0;
-      gaugeStatus.t = now;
-    }
+    const s10 = v.getUint16(2, true), g = v.getInt8(4);
+    gaugeStatus.kmh = s10 === 0xFFFF ? null : s10 / 10;
+    gaugeStatus.gear = g === 0x7F ? null : g;
+    gaugeStatus.warn = n >= 13 ? v.getUint16(11, true) : 0;
+    gaugeStatus.t = now;
     gaugeStatus.held = v.getUint16(8, true);
     gaugeStatus.sim = n >= 11 ? v.getUint8(10) : 0;
     gaugeStatus.dyno = n >= 14 ? v.getUint8(13) : 0;
     gaugeStatus.log = n >= 15 ? v.getUint8(14) : 0;
   } else if (type === 0x03) {
     Logs.onChunk(v);                             // log file download
-  } else if (type === 0x04 && n >= 37 && !replay) {   // GPS and lap timer
+  } else if (type === 0x04 && n >= 37) {   // GPS and lap timer
     const d = v.getInt32(30, true);
     Object.assign(gpsStatus, { fix: v.getUint8(2), sats: v.getUint8(3), lat: v.getInt32(4, true) / 1e7, lon: v.getInt32(8, true) / 1e7,
       kmh: v.getUint16(12, true) / 10, course: v.getUint16(14, true) / 10, lap: v.getUint16(16, true), cur: v.getUint32(18, true),
@@ -170,19 +166,6 @@ async function connectClicked() {
     setState("Not connected", false);
     if (err.name !== "NotFoundError") alert("Could not connect: " + err.message);
   }
-}
-
-// Reconnect automatically to a gauge chosen before (where Chrome supports it)
-async function autoConnect() {
-  if (!navigator.bluetooth || !navigator.bluetooth.getDevices) return;
-  try {
-    const list = await navigator.bluetooth.getDevices();
-    const d = list.find(x => (x.name || "").includes("BPD"));
-    if (!d) return;
-    dev = d;
-    dev.addEventListener("gattserverdisconnected", onDisconnected);
-    await tryReconnect();
-  } catch { /* the Connect button still works */ }
 }
 
 // ---------------- Units ----------------
@@ -329,6 +312,9 @@ function refreshLive() {
   if (gaugeStatus.sim) chips.push(`<span class="chip alarm">SIMULATOR (fake data)</span>`);
   if (gaugeStatus.warn) chips.push(`<span class="chip alarm">WARNING</span>`);
   $("simBtn").textContent = gaugeStatus.sim ? "Stop simulator" : "Start simulator";
+  // The Gauge tab always says when its numbers are not from the car
+  const src = !connected && Demo.running ? "DEMO DATA: made up, not from the car" : connected && gaugeStatus.sim ? "SIMULATOR: the gauge is sending fake data" : "";
+  $("srcBanner").hidden = !src; if (src) $("srcBanner").textContent = src;
   $("statusChips").innerHTML = chips.join("");
   refreshKeypad();
 }
