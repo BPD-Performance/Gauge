@@ -142,6 +142,7 @@ function onDisconnected() {
   rxC = null;
   waiters.forEach(w => clearTimeout(w.timer)); waiters = [];
   diagWarns = []; renderDiag(); Prof.renderBar();
+  $("gpsBanner").hidden = true;
   setState(userDisconnect ? "Not connected" : "Reconnecting…", false);
   if (!userDisconnect) setTimeout(tryReconnect, retryMs);
 }
@@ -797,6 +798,29 @@ $("demoOn").checked = localStorage.getItem("demoOn") === "1";
 const demoCheck = () => { if ($("demoOn").checked && !connected) Demo.start(); else Demo.stop(); };
 $("demoOn").onchange = () => { localStorage.setItem("demoOn", $("demoOn").checked ? "1" : "0"); demoCheck(); };
 setInterval(demoCheck, 1000);
+
+// GPS fitted (ticked in the wizard) but not working: say so at the top of every page, so a blank lap page is never a mystery
+let gpsPollBusy = false;
+async function gpsCheck() {
+  const bn = $("gpsBanner");
+  if (!connected || !Prof.fitted().gps) { bn.hidden = true; return; }
+  if (gpsPollBusy) return;
+  gpsPollBusy = true;
+  try {
+    const r = await cmd({ cmd: "gpsget" });
+    const g = r.ok ? r.gps : null;
+    let msg = "";
+    if (g) {
+      if (!g.on) msg = "GPS: switched off in the gauge. Open the Setup wizard to switch it on.";
+      else if (g.alive === 0) msg = "GPS: no data from the module. Check the wiring.";
+      else if (!g.fix) msg = `GPS: searching for satellites${g.sats ? ` (${g.sats})` : ""}…`;
+    }
+    const was = bn.hidden; bn.hidden = !msg; bn.textContent = msg;
+    if (was !== bn.hidden && gaugeTab) setTimeout(layoutFaces, 0);
+  } catch { /* busy or older firmware: leave the banner as it was */ }
+  gpsPollBusy = false;
+}
+setInterval(gpsCheck, 4000);
 demoCheck();
 
 // Auto-connect: reconnect to the gauge this browser has already paired with

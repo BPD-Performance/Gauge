@@ -59,3 +59,7 @@ Firmware (not compiled for the ESP32 or run on hardware: please build and watch 
 - Oil, fuel pressure, AFR and coolant pressure pages and warnings are turned on by hand in Setup (Gauge pages, Warnings). The wizard no longer touches them.
 - The GPS module "talking" status is kept: it is only used by the wizard's GPS step. It no longer turns any page on.
 - info no longer reports "seen"; the setupset "forget" option is removed.
+
+## Patch 4 (2026-11-04, later)
+- GPS warning banner: if GPS is ticked as fitted and the gauge is connected, a red strip under the header says why there is no lap data: switched off in the gauge / no data from the module (check wiring) / searching for satellites (n). It disappears on a fix. Shows on every tab. (Ticking GPS in the wizard still turns the Lap timer page on.)
+- Zips are now one file with the firmware and the app in clearly named folders (see the zip layout in the chat). Service worker cache v22.

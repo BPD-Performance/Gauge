@@ -100,6 +100,8 @@ input[type=checkbox]:checked,.dx.on{background-image:url("data:image/svg+xml,%3C
 .hnd{border-radius:50%;box-sizing:border-box;border:3px solid #fff;cursor:grab;touch-action:none}
 .hnd.end{background:var(--amber)}.hnd.mid{background:var(--pink)}.hnd.tip{background:#fff;border-color:var(--pink)}
 .gctl{display:flex;gap:6px;align-items:center}.gctl .num{width:64px;min-height:34px;padding:2px 6px;text-align:right}
+#gpsBanner{background:var(--warn);color:#fff;font:12px/1.4 var(--dot);padding:6px 14px;text-align:center}
+#gpsBanner[hidden]{display:none}
 .srcTag{display:inline-block;font:12px var(--dot);padding:2px 10px;margin:0 0 8px;background:var(--pink);color:#fff}
 #logRead{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:4px;font:11px var(--dot);margin:8px 0}
 .pg{display:grid;grid-template-columns:auto 1fr auto auto;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--line);font:14px var(--dot)}
@@ -178,6 +180,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  <span id="state" role="status">Not connected</span>
  <button class="btn" id="connectBtn" type="button">Connect</button>
 </header>
+<div id="gpsBanner" role="status" hidden></div>
 
 <main>
 <section id="tab-gauge">
