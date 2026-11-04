@@ -1,9 +1,13 @@
-# App changes (2026-11-04, Iron Cathedral drop)
+# App changes (2026-11-04, BPD Embers drop)
+
+## Third pass: names and avatar
+- The new skin is named BPD Embers; its avatar is Cinder. Each skin owns its avatar: BPD FC = the original dot-matrix model, BPD Embers = Cinder.
+- The separate avatar style setting (face_style) is gone from the app and the gauge. Only "Gauge skin" remains. The Turbo bot is removed from the system altogether (firmware code and art, app code and turbobot.js), which also frees its flash and PSRAM.
 
 ## Second pass
-- Avatar follows the skin: the Face page style select is now "Avatar style (BPD FC)" and is greyed out with a note when Iron Cathedral is chosen.
+- Avatar follows the skin: the Face page style select is now "Avatar style (BPD FC)" and is greyed out with a note when BPD Embers is chosen.
 - Setup > Screen: new "Show frame rate on the gauge" checkbox (debug, not saved, switches off at power-off). Needs the matching firmware.
-- Setup > Screen: new "Gauge skin" menu (BPD FC / Iron Cathedral). Greyed out on older firmware.
+- Setup > Screen: new "Gauge skin" menu (BPD FC / BPD Embers). Greyed out on older firmware.
 - The live gauge preview in the app still draws BPD FC for every skin. Service worker cache v24.
 
 # Changes (2026-11-04)

@@ -429,12 +429,10 @@ function renderSettings() {
   ${tyre("r", "Rear tyres (fitted now)")}${tyre("f", "Front tyres")}${tyre("c", "Tyres the ECU speed is calibrated for")}
   ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"])}
   <div style="height:10px"></div>${sel("gearSrc", "Gear display", ["Work out from RPM", "Use ECU gear", "Off"])}
-  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, the gauge skin (the avatar follows it), warning popups over the Face page, and the shift light ring and colour.</p>
+  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, the gauge skin (each skin has its own avatar), warning popups over the Face page, and the shift light ring and colour.</p>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}
-   ${sel("gauge_skin", "Gauge skin", [[0, "BPD FC"], [1, "Iron Cathedral"]])}
-   ${sel("face_style", "Avatar style (BPD FC)", [[0, "Classic (dot matrix)"], [1, "Turbo bot (16-bit)"]])}</div>
-  <p class="lead" id="faceHint" style="margin-top:6px"></p>
+   ${sel("gauge_skin", "Gauge skin", [[0, "BPD FC"], [1, "BPD Embers"]])}</div>
   <div class="list" style="margin-top:12px">
    <div class="lrow"><label class="ck2"><input type="checkbox" id="face_popup"> Show warning popups over the Face page</label></div>
    <div class="lrow"><label class="ck2"><input type="checkbox" id="shift_show"> Flash the shift light ring</label></div>
@@ -451,17 +449,8 @@ function renderSettings() {
   // Face popup and shift light (older gauge firmware doesn't send these, so default them)
   $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;
   $("shift_show").checked = S.shift_show === undefined ? true : !!S.shift_show;
-  $("face_style").value = S.face_style === undefined ? 0 : S.face_style;     // older firmware: Classic only
-  $("face_style").disabled = S.face_style === undefined;
   $("gauge_skin").value = S.gauge_skin === undefined ? 0 : S.gauge_skin;     // older firmware: BPD FC only
   $("gauge_skin").disabled = S.gauge_skin === undefined;
-  const syncFace = () => {            // the avatar follows the skin
-    const iron = +$("gauge_skin").value === 1;
-    $("face_style").disabled = iron || S.face_style === undefined;
-    $("faceHint").textContent = iron ? "Iron Cathedral always uses the Ash knight avatar. The BPD FC avatar styles come back when BPD FC is selected."
-                                     : "BPD FC avatar: Classic dot matrix or Turbo bot.";
-  };
-  $("gauge_skin").onchange = syncFace; syncFace();
   $("dbg_fps").onchange = () => cmd({ cmd: "fps", on: $("dbg_fps").checked ? 1 : 0 }).catch(() => { $("dbg_fps").checked = false; });
   const hex = "#" + ((S.shift_rgb === undefined ? 0xFFB000 : S.shift_rgb) >>> 0).toString(16).padStart(6, "0").toUpperCase();
   $("shift_rgb").value = hex;
@@ -508,7 +497,6 @@ function readForm() {
   for (let i = 1; i <= 6; i++) if ($("g" + i)) S["g" + i] = parseFloat($("g" + i).value);
   S.face_popup = $("face_popup").checked ? 1 : 0;
   S.shift_show = $("shift_show").checked ? 1 : 0;
-  if (S.face_style !== undefined) S.face_style = +$("face_style").value;
   if (S.gauge_skin !== undefined) S.gauge_skin = +$("gauge_skin").value;
   S.shift_rgb = parseInt($("shift_rgb").value.slice(1), 16);
   readWarns();
