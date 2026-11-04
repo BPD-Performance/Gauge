@@ -63,3 +63,8 @@ Firmware (not compiled for the ESP32 or run on hardware: please build and watch 
 ## Patch 4 (2026-11-04, later)
 - GPS warning banner: if GPS is ticked as fitted and the gauge is connected, a red strip under the header says why there is no lap data: switched off in the gauge / no data from the module (check wiring) / searching for satellites (n). It disappears on a fix. Shows on every tab. (Ticking GPS in the wizard still turns the Lap timer page on.)
 - Zips are now one file with the firmware and the app in clearly named folders (see the zip layout in the chat). Service worker cache v22.
+
+## Patch 5 (2026-11-04, later): lambda only
+- Mixture is always shown as lambda. The Mixture, AFR stoich and Fixed stoich settings are gone from Setup and from the wizard's Units step; saving always sends lambda.
+- Firmware forces lambda when it loads settings (afrAsLambda = 1), so a gauge that was on AFR switches to lambda after this update. The old stoich fields stay in the saved data but are unused.
+- Service worker cache v23.

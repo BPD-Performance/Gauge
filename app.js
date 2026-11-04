@@ -419,6 +419,7 @@ function collapseSections(box) {
 const SHIFT_COLOURS = [["Amber", "#FFB000"], ["Red", "#FF3B1F"], ["BPD pink", "#ED008C"], ["Blue", "#2EC4FF"], ["Green", "#7CFF4F"], ["White", "#FFFFFF"]];
 
 function renderSettings() {
+  S.lam = 1;                                     // lambda only: no AFR / stoich setting
   const tyre = (p, title) => `<div class="card"><p>${title}</p><div class="grid3">${fld(p + "w", "Width")}${fld(p + "a", "Profile")}${fld(p + "r", "Rim (in)")}</div></div>`;
   $("settingsBody").innerHTML = `
   <h2>Gauge pages</h2><p class="lead">Tick the pages the gauge cycles through and use the arrows to put them in order. Turn on oil, fuel pressure, AFR and similar pages here if your car has those sensors. A page for a sensor that isn't fitted just shows zero.</p><div class="list" id="pagesBox"></div>
@@ -439,9 +440,8 @@ function renderSettings() {
      <select id="shift_pre" style="width:auto;min-height:36px">${SHIFT_COLOURS.map(c => `<option value="${c[1]}">${c[0]}</option>`).join("")}<option value="custom">Custom</option></select>
      <input type="color" id="shift_rgb" style="width:46px;min-height:36px;padding:2px"></span></div>
   </div>
-  <h2>Units</h2><p class="lead">How pressure, temperature, speed and mixture (AFR or lambda) are shown. AFR stoich: follow the ethanol content for flex fuel, or use a fixed value.</p>
-  <div class="grid">${sel("pu", "Pressure", PU)}${sel("tu", "Temperature", TU)}${sel("su", "Speed", SU)}${sel("lam", "Mixture", ["AFR", "Lambda"])}
-   ${sel("flex", "AFR stoich", [[1, "Follow ethanol content"], [0, "Fixed value"]])}${fld("stoich", "Fixed stoich")}</div>
+  <h2>Units</h2><p class="lead">How pressure, temperature and speed are shown. Air-fuel mixture is always shown as lambda (1.00 is the ideal mix; lower is richer, higher is leaner), so there is no stoich setting to get wrong.</p>
+  <div class="grid">${sel("pu", "Pressure", PU)}${sel("tu", "Temperature", TU)}${sel("su", "Speed", SU)}</div>
   <h2>Warnings</h2><p class="lead">Each warning can be switched on or off and has its own limit. Oil, fuel and coolant pressure warnings only make sense if that sensor is fitted. The shift light sets the RPM where the ring flashes.</p><div id="warnBox"></div>
   <div class="keep"><p class="lead"><b>Save to gauge</b> sends these settings to the gauge (or keeps them on this phone if it isn't connected). <b>Reload from gauge</b> throws away unsaved edits and shows what the gauge has now.</p><div class="actions"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div></div>
 `;
@@ -457,7 +457,7 @@ function renderSettings() {
   $("shift_rgb").oninput = () => { const v = $("shift_rgb").value.toUpperCase(); $("shift_pre").value = SHIFT_COLOURS.some(c => c[1] === v) ? v : "custom"; };
   collapseSections($("settingsBody"));
 
-  ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "lam", "flex", "stoich", "bright", "tachmax", "numGears", "acycle"]
+  ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "spdSrc", "gearSrc", "pu", "tu", "su", "bright", "tachmax", "numGears", "acycle"]
     .forEach(k => { if (S[k] !== undefined) $(k).value = S[k]; });
   const gears = () => { $("gearBox").innerHTML = Array.from({ length: +$("numGears").value }, (_, i) => fld("g" + (i + 1), "Gear " + (i + 1))).join("");
     for (let i = 1; i <= +$("numGears").value; i++) $("g" + i).value = S["g" + i]; };
@@ -490,8 +490,8 @@ function renderWarns() {
 function readWarns() { WARN.forEach(w => { S[w.key + "_on"] = $(w.key + "_on").checked ? 1 : 0; w.f.forEach(([k, , t]) => { if ($(k).value !== "") S[k] = metric($(k).value, t); }); }); }
 
 function readForm() {
-  ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "stoich", "bright"].forEach(k => S[k] = parseFloat($(k).value));
-  ["numGears", "spdSrc", "gearSrc", "lam", "flex", "tachmax", "acycle"].forEach(k => S[k] = +$(k).value);
+  ["fd", "rw", "ra", "rr", "fw", "fa", "fr", "cw", "ca", "cr", "bright"].forEach(k => S[k] = parseFloat($(k).value));
+  ["numGears", "spdSrc", "gearSrc", "tachmax", "acycle"].forEach(k => S[k] = +$(k).value);
   for (let i = 1; i <= 6; i++) if ($("g" + i)) S["g" + i] = parseFloat($("g" + i).value);
   S.face_popup = $("face_popup").checked ? 1 : 0;
   S.shift_show = $("shift_show").checked ? 1 : 0;

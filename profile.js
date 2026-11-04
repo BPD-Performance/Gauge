@@ -158,7 +158,7 @@ const Prof = (() => {
   async function wizard() {
     if (!S) { await choose("Connect first", "The wizard needs the gauge's current settings. Connect to the gauge, then run it again from Setup.", [{ label: "OK", value: 1 }]); return false; }
     const p = active() || create("My car", S);
-    const w = { name: p.name, f: Object.assign(clone(ALL), p.fitted), pu: S.pu, tu: S.tu, su: S.su, lam: S.lam, numGears: S.numGears,
+    const w = { name: p.name, f: Object.assign(clone(ALL), p.fitted), pu: S.pu, tu: S.tu, su: S.su, numGears: S.numGears,
       fd: S.fd, g: [1, 2, 3, 4, 5, 6].map(i => S["g" + i]), rw: S.rw, ra: S.ra, rr: S.rr };
     if (!p.done) {                               // first time: start from what the gauge already shows
       w.f.keypad = !!S.on[PG.keypad]; w.f.gps = !!S.on[PG.lap];
@@ -190,9 +190,9 @@ const Prof = (() => {
           };
           tick(); b._gpsTimer = setInterval(tick, 1500); },
         leave: b => clearInterval(b._gpsTimer) },
-      { t: "Units", body: () => `<div class="grid">${sel("wpu", "Pressure", PU)}${sel("wtu", "Temperature", TU)}${sel("wsu", "Speed", SU)}${sel("wlam", "Mixture", ["AFR", "Lambda"])}</div>`,
-        init: b => { b.querySelector("#wpu").value = w.pu; b.querySelector("#wtu").value = w.tu; b.querySelector("#wsu").value = w.su; b.querySelector("#wlam").value = w.lam; },
-        read: b => { w.pu = +b.querySelector("#wpu").value; w.tu = +b.querySelector("#wtu").value; w.su = +b.querySelector("#wsu").value; w.lam = +b.querySelector("#wlam").value; } },
+      { t: "Units", body: () => `<div class="grid">${sel("wpu", "Pressure", PU)}${sel("wtu", "Temperature", TU)}${sel("wsu", "Speed", SU)}</div>`,
+        init: b => { b.querySelector("#wpu").value = w.pu; b.querySelector("#wtu").value = w.tu; b.querySelector("#wsu").value = w.su; },
+        read: b => { w.pu = +b.querySelector("#wpu").value; w.tu = +b.querySelector("#wtu").value; w.su = +b.querySelector("#wsu").value; } },
       { t: "Gearing and tyres", body: () => `<p class="lead">Used to work out the gear and corrected speed. Don't have these to hand? Skip for now: the gauge will show the gear from the ECU and the speed as the ECU reports it, and you can fill this in later in Setup.</p>
           <div class="grid">${sel("wng", "Gears", [[4, 4], [5, 5], [6, 6]])}${fld("wfd", "Final drive")}</div><div class="grid3" id="wg" style="margin:10px 0"></div>
           <div class="card"><p>Rear tyres</p><div class="grid3">${fld("wrw", "Width")}${fld("wra", "Profile")}${fld("wrr", "Rim (in)")}</div></div>`,
@@ -238,7 +238,7 @@ const Prof = (() => {
   }
 
   function applyWizard(w) {
-    S.pu = w.pu; S.tu = w.tu; S.su = w.su; S.lam = w.lam;
+    S.pu = w.pu; S.tu = w.tu; S.su = w.su; S.lam = 1;      // mixture is always lambda
     if (w.skipGear) { S.gearSrc = 1; S.spdSrc = 0; }                   // no placeholder ratios: gear from the ECU, speed as the ECU reports it
     else {
       S.numGears = w.numGears; S.fd = w.fd; S.rw = w.rw; S.ra = w.ra; S.rr = w.rr;
