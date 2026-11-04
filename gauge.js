@@ -538,9 +538,6 @@ const GaugeView = (() => {
       let y = gTitleY + TH + 32;
       if (!s.lines.length) { drawText("NO ACTIVE WARNINGS", CX, y, 2.75, C_LIT, 1); y += 36; }
       s.lines.forEach(l => { drawText(l, CX, y, 2.75, C_WARN, 1); y += 36; });
-      y += 8; fillRect(150, Math.round(y) - 16, 329, Math.round(y) + 15, C_LIT);
-      drawText("DTC  --", CX, y + 1, CELL_SMALL, C_BG, 1); y += 40;
-      drawText("NOT LINKED YET", CX, y, CELL_SMALL, C_LIT, 1);
     }
     drawText("BPD", CX, BPD_Y, CELL_LABEL, C_BRAND, 1);
     if (s.rec) {

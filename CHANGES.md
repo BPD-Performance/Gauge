@@ -16,3 +16,24 @@ Lap timer lines
 
 Other
 - Removed a duplicate autoConnect() in app.js. Service worker cache bumped to v19.
+
+## Step 1: setup, profiles, one Live page (second drop, 2026-11-04)
+
+App
+- Setup wizard (Setup tab, re-runnable any time): name the car, what's fitted (keypad, GPS, oil, fuel, wideband, coolant pressure), units, gearing and tyres, review. Turns on only the pages and warnings the car has.
+- Tab bar follows what's fitted. A "+" appears when something is hidden; Customise tabs (Setup) does the same. Before any profile exists every tab shows, so nothing vanishes on upgrade.
+- Car profiles (Device tab > Car profile): one per car, keyed by its own id (not the Bluetooth id), so the gauge can move between cars and phones. Load, save as new, rename, delete, save to a phone file (.bpdprofile), open from a file, back up to / restore from the gauge's SD card. The Bluetooth PIN is never in a profile.
+- The phone remembers each profile and "last connected". Setup opens offline from the saved copy; offline edits are kept and offered next time you connect.
+- On connect it compares the phone's copy with the gauge. Same = silent. Different = "use the gauge's / send this phone's / review / decide later". New gauge = offer the wizard (or Not now = Basic view).
+- Live and Diag are one page: warnings (dismiss + history) at the top, then pinned tiles and channels.
+- DTC removed everywhere (Diag cards, Alerts face).
+- "Open the app on" is now "Start-up tab (this device)" with a plain explanation.
+- Tab bar can no longer cut tabs off on narrow screens (flexible widths).
+- Service worker cache v20.
+
+Firmware (not compiled or run on hardware here: please build and check)
+- New Setup_State.cpp/.h: setup state 0/1/2 and profile id/name in their own flash area. A gauge that already had saved settings counts as configured, so upgrading changes nothing.
+- A brand-new gauge starts in the Basic view (Boost, RPM/speed, Coolant, IAT, Alerts; only the coolant-hot warning on). Same screens, nothing extra.
+- info now reports setup, pid, pname. New commands: setupset, pls, pput, pget, pdel. Profile files live in /profiles on the SD card (written to .tmp then swapped in, previous copy kept as .bak). The gauge runs from flash and never needs them.
+- Each gauge advertises a unique name ("BPD Gauge A1B2", from its Bluetooth address).
+- DTC placeholder removed from the Alerts page. Firmware version 1.2-setup.

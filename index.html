@@ -30,8 +30,9 @@ header img{min-width:0;flex:0 1 auto;max-width:60%;object-fit:contain;object-pos
 @keyframes blink{50%{opacity:.35}}
 main{margin:0 auto;padding:12px 16px}
 main>section:not(#tab-gauge){max-width:620px;margin:0 auto}
-nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px solid var(--line);display:grid;grid-template-columns:repeat(8,1fr);z-index:20}
-nav button{background:none;border:0;font:10px/1.25 var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:2px solid var(--line);display:flex;z-index:20}
+nav button{flex:1 1 0;min-width:0;background:none;border:0;font:10px/1.25 var(--dot);color:var(--amber);min-height:60px;padding:0 2px;border-radius:0;overflow:hidden}
+nav button.plus{flex:0 0 44px;font-size:20px;color:var(--amber2)}
 nav button[aria-selected=true]{background:var(--amber);color:var(--bg)}
 section[hidden],.row[hidden]{display:none}
 h2{font:16px var(--dot);margin:34px 0 10px;display:inline-block;background:var(--amber);color:var(--bg);padding:3px 12px}
@@ -159,6 +160,16 @@ details.sec[open]>summary .pm::before{content:"-"}
 #trkMap .leaflet-control-attribution a{color:var(--amber)}
 .gateLbl{font:12px var(--dot);white-space:nowrap}
 .secbody>h2:first-child{margin-top:0}
+.mdl{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:50;display:flex;align-items:flex-end;justify-content:center}
+.mdl .box{background:var(--bg);border:2px solid var(--amber);border-bottom:0;width:100%;max-width:620px;max-height:92vh;overflow:auto;padding:16px}
+@media(min-width:700px){.mdl{align-items:center}.mdl .box{border-bottom:2px solid var(--amber)}}
+.mdl h3{font:18px var(--dot);margin:0 0 10px}
+.mdl .steps{font:12px var(--dot);color:var(--amber2);margin-bottom:8px}
+.mdl .actions{margin-top:14px}
+.mdl .opt{display:block;width:100%;text-align:left;margin:8px 0}
+.mdl .opt small{display:block;font:13px var(--body);opacity:.8;margin-top:2px}
+.diff{width:100%;border-collapse:collapse;font-size:.88rem;margin:8px 0}.diff td,.diff th{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left}
+.pr{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}.pr .nm{flex:1}.pr .act{font:11px var(--dot);color:var(--pink)}
 </style></head><body>
 
 <header>
@@ -183,6 +194,15 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <section id="tab-live" hidden>
  <div class="status" id="statusChips"></div>
+ <h2>Warnings</h2>
+ <p class="lead">Live from the gauge. Dismissing here does the same as tapping the warning on the gauge.</p>
+ <div class="list" id="warnList"><div class="empty">Connect to the gauge to see warnings.</div></div>
+ <div class="actions"><button class="btn" id="ackBtn" type="button">Dismiss on gauge</button></div>
+ <details class="sec" id="histSec"><summary><span>Warning history</span><span class="pm" aria-hidden="true"></span></summary><div class="secbody">
+  <p class="lead">Every warning this device has seen while connected, with the worst value reached. Kept on this device.</p>
+  <div class="list" id="histList"></div>
+  <div class="actions"><button class="btn ghost" id="histClear" type="button">Clear history</button></div>
+ </div></details>
  <h2>Pinned</h2>
  <div id="pinned"></div>
  <div class="actions"><button class="btn ghost" id="pinEdit" type="button">Choose pinned channels</button></div>
@@ -211,22 +231,6 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="keypad" id="keypad"></div>
 </section>
 
-<section id="tab-diag" hidden>
- <h2>Active warnings</h2>
- <p class="lead">Live from the gauge. Dismissing here does the same as tapping the warning on the gauge.</p>
- <div class="list" id="warnList"><div class="empty">Connect to the gauge to see warnings.</div></div>
- <div class="actions"><button class="btn" id="ackBtn" type="button">Dismiss on gauge</button></div>
- <h2>Warning history</h2>
- <p class="lead">Every warning this device has seen while connected, with the worst value reached. Kept on this device.</p>
- <div class="list" id="histList"></div>
- <div class="actions"><button class="btn ghost" id="histClear" type="button">Clear history</button></div>
- <h2>ECU trouble codes</h2>
- <div class="card">
-  <p>Not linked yet</p>
-  <div class="lead" style="margin:0">The Elite only reports and clears its trouble codes (DTCs) through OBD-II on its vehicle CAN bus. The gauge sits on the Haltech CAN bus, which runs at a different speed, so it can't reach them yet. Reading and clearing codes needs a second CAN connection on the gauge. Until then, use NSP to view and clear codes.</div>
- </div>
- <div class="actions"><button class="btn ghost" type="button" disabled>Read codes</button><button class="btn ghost" type="button" disabled>Clear codes</button></div>
-</section>
 
 <section id="tab-logs" hidden>
  <h2>Recording</h2>
@@ -269,6 +273,8 @@ details.sec[open]>summary .pm::before{content:"-"}
 </section>
 
 <section id="tab-settings" hidden>
+ <div class="card" id="profBar"></div>
+ <div class="actions"><button class="btn" id="wizBtn" type="button">Setup wizard</button><button class="btn ghost" id="custBtn" type="button">Customise tabs</button></div>
  <div id="settingsBody"><div class="empty">Connect to the gauge to load its settings.</div></div>
  <p id="msg" role="status"></p>
 </section>
@@ -280,11 +286,13 @@ details.sec[open]>summary .pm::before{content:"-"}
   <button class="btn ghost" id="forgetBtn" type="button">Disconnect</button>
   <button class="btn warn" id="defaultsBtn" type="button">Reset gauge settings</button>
  </div>
+ <h2>Car profile</h2>
+ <div id="profBox"></div>
  <h2>This device</h2>
  <div class="card">
-  <label for="startTab">Open the app on</label>
+  <label for="startTab">Start-up tab (this device)</label>
   <select id="startTab"><option value="gauge">Gauge</option><option value="keypad">CAN keypad</option><option value="live">Live</option><option value="lap">Lap timer</option><option value="logs">Logs</option></select>
-  <div class="lead" style="margin:8px 0 0">Handy for a head unit: set it to Gauge (then use Full screen) or CAN keypad. Two devices can be connected to the gauge at the same time, for example the head unit and your phone.</div>
+  <div class="lead" style="margin:8px 0 0">Which tab this app opens on each time you start it on this phone, laptop or head unit. It does not change what the gauge itself shows. Handy for a head unit: set it to Gauge (then use Full screen) or CAN keypad.</div>
  </div>
  <h2>Gauge tab on this device</h2>
  <div class="card">
@@ -312,16 +320,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 </section>
 </main>
 
-<nav role="tablist">
- <button role="tab" aria-selected="true" data-tab="gauge">Gauge</button>
- <button role="tab" aria-selected="false" data-tab="keypad">CAN<br>keypad</button>
- <button role="tab" aria-selected="false" data-tab="lap">Lap<br>timer</button>
- <button role="tab" aria-selected="false" data-tab="logs">Logs</button>
- <button role="tab" aria-selected="false" data-tab="live">Live</button>
- <button role="tab" aria-selected="false" data-tab="diag">Diag</button>
- <button role="tab" aria-selected="false" data-tab="settings">Setup</button>
- <button role="tab" aria-selected="false" data-tab="device">Device</button>
-</nav>
+<nav role="tablist" id="nav"></nav>
 
 <script src="haltech.js"></script>
 <script src="turbobot.js"></script>
@@ -330,6 +329,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 <link rel="stylesheet" href="leaflet/leaflet.css">
 <script src="leaflet/leaflet.js"></script>
 <script src="logs.js"></script>
+<script src="profile.js"></script>
 <script src="track.js"></script>
 <script src="app.js"></script>
 </body></html>

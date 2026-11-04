@@ -9,11 +9,12 @@ const $ = id => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 let dev = null, rxC = null, connected = false, userDisconnect = false, retryMs = 2000;
-let S = null;                                   // gauge settings
+let S = null;                                   // gauge settings (the saved copy from this phone while not connected)
+let gaugeInfo = null;
 const frames = {};                              // latest CAN data by ID: {data, t}
 const gaugeStatus = { kmh: null, gear: null, held: 0, sim: 0, warn: 0, dyno: 0, log: 0, t: 0 };
 let diagWarns = [];
-const gpsStatus = { fix: 0, sats: 0, lat: 0, lon: 0, kmh: 0, course: 0, lap: 0, cur: 0, last: 0, best: 0, delta: null, sector: 0, progress: 0, gates: 0, t: 0 };                             // active warnings from the gauge (Diag tab and gauge screen)
+const gpsStatus = { fix: 0, sats: 0, lat: 0, lon: 0, kmh: 0, course: 0, lap: 0, cur: 0, last: 0, best: 0, delta: null, sector: 0, progress: 0, gates: 0, t: 0 };                             // active warnings from the gauge (Live tab and gauge screen)
 
 // ---------------- Command channel ----------------
 let lineBuf = "", waiters = [], chain = Promise.resolve();
@@ -121,7 +122,7 @@ async function openLink() {
   setState("Connected", true);
   lastWarnMask = -1;
 
-  const info = await cmd({ cmd: "info" });
+  const info = gaugeInfo = await cmd({ cmd: "info" });
   await cmd({ cmd: "time", t: Math.floor(Date.now() / 1000), tz: -new Date().getTimezoneOffset() }).catch(() => {});   // dates the logs
   $("devInfo").innerHTML = `<p>${info.name || "BPD Gauge"}</p>Firmware ${info.fw}, protocol ${info.proto}`;
   await subscribe();
@@ -129,7 +130,7 @@ async function openLink() {
 }
 
 // Only ask for what's on screen: every CAN ID on the Live tab, otherwise just the IDs the
-// gauge faces, Diag and Keypad tabs use. Fewer IDs leave room for faster update rates.
+// gauge faces, warnings and Keypad use. Fewer IDs leave room for faster update rates.
 const FACE_IDS = [0x360, 0x361, 0x362, 0x368, 0x372, 0x3E0, 0x3E1, 0x3E4, 0x3E9];
 let liveTab = false;
 async function subscribe() {
@@ -140,7 +141,7 @@ function onDisconnected() {
   connected = false;
   rxC = null;
   waiters.forEach(w => clearTimeout(w.timer)); waiters = [];
-  diagWarns = []; renderDiag();
+  diagWarns = []; renderDiag(); Prof.renderBar();
   setState(userDisconnect ? "Not connected" : "Reconnecting…", false);
   if (!userDisconnect) setTimeout(tryReconnect, retryMs);
 }
@@ -386,9 +387,13 @@ const metric = (v, k) => { v = parseFloat(v); return k == "p" ? pFrom(v, S.pu) :
 const fld = (id, label, attrs = "") => `<div><label for="${id}">${label}</label><input id="${id}" inputmode="decimal" ${attrs}></div>`;
 const sel = (id, label, opts) => `<div><label for="${id}">${label}</label><select id="${id}">${opts.map((o, i) => `<option value="${Array.isArray(o) ? o[0] : i}">${Array.isArray(o) ? o[1] : o}</option>`).join("")}</select></div>`;
 
-async function loadSettings() {
+async function loadSettings(adopt) {
   const r = await cmd({ cmd: "get" });
-  if (r.ok) { S = r.settings; renderSettings(); buildFaces(); }
+  if (r.ok) {
+    S = r.settings;
+    await Prof.onConnect(gaugeInfo, S, !!adopt);        // compares with this phone's saved copy; asks only when they differ
+    rebuildNav(); renderSettings(); buildFaces(); Prof.renderBar(); Prof.renderDevice();
+  }
   await Logs.refresh().catch(() => {});
   if ($("logSettings")) Logs.renderSettings($("logSettings"));
   if ($("gpsBox")) Track.render($("gpsBox"));
@@ -460,7 +465,8 @@ function renderSettings() {
   ["pu", "tu"].forEach(k => $(k).onchange = () => { readWarns(); S[k] = +$(k).value; renderWarns(); });
   renderPages(); renderWarns();
   $("saveBtn").onclick = saveSettings;
-  $("reloadBtn").onclick = () => loadSettings().catch(e => $("msg").textContent = e.message);
+  $("reloadBtn").disabled = !connected;
+  $("reloadBtn").onclick = () => loadSettings(true).catch(e => $("msg").textContent = e.message);
 }
 
 function renderPages() {
@@ -496,10 +502,17 @@ function readForm() {
 async function saveSettings() {
   readForm();
   S.pu = +$("pu").value; S.tu = +$("tu").value; S.su = +$("su").value;
+  if (!connected) {                              // away from the gauge: keep it on this phone, ask to send next time
+    Prof.saveLocal(); Prof.renderBar();
+    $("msg").textContent = "Saved on this phone. It will ask to send these to the gauge next time you connect.";
+    return;
+  }
   $("msg").textContent = "Saving…";
   try {
     const r = await cmd({ cmd: "set", ...S });
+    if (r.ok) Prof.snapshot();
     $("msg").textContent = r.ok ? "Saved. The gauge has updated." : "Not saved: " + r.err;
+    Prof.renderBar();
   } catch (e) { $("msg").textContent = "Not saved: " + e.message; }
 }
 
@@ -511,7 +524,7 @@ $("cmdSend").onclick = () => cmd($("cmdIn").value.trim()).catch(e => logConsole(
 $("forgetBtn").onclick = () => { if (connected) { userDisconnect = true; dev.gatt.disconnect(); } };
 $("defaultsBtn").onclick = async () => {
   if (!confirm("Reset every gauge setting to its defaults?")) return;
-  try { const r = await cmd({ cmd: "defaults" }); if (r.ok) setTimeout(() => loadSettings(), 1500); else alert(r.err); } catch (e) { alert(e.message); }
+  try { const r = await cmd({ cmd: "defaults" }); if (r.ok) setTimeout(() => loadSettings(true), 1500); else alert(r.err); } catch (e) { alert(e.message); }
 };
 
 // ---------------- Gauge screen tab ----------------
@@ -655,7 +668,7 @@ function faceLoop(t) {
   requestAnimationFrame(faceLoop);
 }
 
-// ---------------- Diag tab ----------------
+// ---------------- Warnings (top of the Live tab) ----------------
 const LOW_WARN = ["OIL P", "FUEL", "BATT"];      // for these, the worst value is the lowest
 let warnHist = JSON.parse(localStorage.getItem("warnHist") || "{}");
 
@@ -704,22 +717,44 @@ $("ackBtn").onclick = () => cmd({ cmd: "ack" }).then(() => setTimeout(pollWarns,
 $("histClear").onclick = () => { if (confirm("Clear the warning history on this device?")) { warnHist = {}; localStorage.removeItem("warnHist"); renderDiag(); } };
 
 // ---------------- Tabs and start-up ----------------
-document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
-  document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
-  document.querySelectorAll("main section").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
-  gaugeTab = b.dataset.tab === "gauge";
+// The tab bar only shows what the car has (see Prof.fitted); a "+" button appears when something is hidden.
+const TABS = [{ id: "gauge", label: "Gauge" }, { id: "keypad", label: "CAN<br>keypad", opt: "keypad" }, { id: "lap", label: "Lap<br>timer", opt: "gps" },
+  { id: "logs", label: "Logs" }, { id: "live", label: "Live" }, { id: "settings", label: "Setup" }, { id: "device", label: "Device" }];
+let curTab = "gauge";
+function selectTab(id) {
+  curTab = id;
+  document.querySelectorAll("nav button[data-tab]").forEach(x => x.setAttribute("aria-selected", x.dataset.tab === id));
+  document.querySelectorAll("main section").forEach(s => s.hidden = s.id !== "tab-" + id);
+  gaugeTab = id === "gauge";
   document.body.classList.toggle("gaugeMode", gaugeTab);
   const wasLive = liveTab;
-  liveTab = b.dataset.tab === "live";
+  liveTab = id === "live";
   if (liveTab !== wasLive) subscribe().catch(() => {});
-  if (b.dataset.tab === "logs") Logs.refresh();
-  if (b.dataset.tab === "lap") Track.redraw();
+  if (id === "logs") Logs.refresh();
+  if (id === "lap") Track.redraw();
+  if (id === "settings") Prof.renderBar();
+  if (id === "device") Prof.renderDevice();
   if (gaugeTab) setTimeout(layoutFaces, 0);
-  if (b.dataset.tab === "diag") renderDiag();
-});
+  if (id === "live") renderDiag();
+}
+function rebuildNav() {
+  const f = Prof.fitted();
+  const vis = TABS.filter(t => !t.opt || f[t.opt]);
+  const nav = $("nav");
+  nav.innerHTML = vis.map(t => `<button role="tab" aria-selected="${t.id === curTab}" data-tab="${t.id}">${t.label}</button>`).join("") +
+    (vis.length < TABS.length ? `<button class="plus" type="button" id="navPlus" aria-label="Show hidden tabs">+</button>` : "");
+  nav.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => selectTab(b.dataset.tab));
+  if ($("navPlus")) $("navPlus").onclick = () => Prof.customise();
+  if (!vis.some(t => t.id === curTab)) selectTab("gauge");
+  sizeGaugeTab();
+}
 $("connectBtn").onclick = connectClicked;
 $("rate").onchange = () => subscribe().catch(() => {});
 
+$("wizBtn").onclick = () => Prof.wizard();
+$("custBtn").onclick = () => Prof.customise();
+{ const c = Prof.cached(); if (c) { S = c; try { renderSettings(); } catch {} } }       // Setup works without the gauge, from the copy saved on this phone
+rebuildNav(); Prof.renderBar(); Prof.renderDevice();
 buildPinned();
 buildChannelList();
 buildKeypad();
@@ -791,9 +826,8 @@ async function autoConnect() {
 autoConnect();
 $("startTab").value = localStorage.getItem("startTab") || "gauge";
 $("startTab").onchange = () => localStorage.setItem("startTab", $("startTab").value);
-{ const t = document.querySelector(`nav button[data-tab="${$("startTab").value}"]`); if (t && $("startTab").value !== "gauge") setTimeout(() => t.click(), 0); }
+{ const t = document.querySelector(`nav button[data-tab="${$("startTab").value}"]`); if (t && $("startTab").value !== "gauge") setTimeout(() => selectTab($("startTab").value), 0); }
 Track.render($("gpsBox"));                       // lap timer tab works without the gauge (map, library, import)
 setInterval(() => { if (connected && !document.getElementById("tab-logs").hidden) Logs.refresh(); }, 5000);
 requestAnimationFrame(faceLoop);
-autoConnect();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
