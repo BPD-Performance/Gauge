@@ -37,3 +37,25 @@ Firmware (not compiled or run on hardware here: please build and check)
 - info now reports setup, pid, pname. New commands: setupset, pls, pput, pget, pdel. Profile files live in /profiles on the SD card (written to .tmp then swapped in, previous copy kept as .bak). The gauge runs from flash and never needs them.
 - Each gauge advertises a unique name ("BPD Gauge A1B2", from its Bluetooth address).
 - DTC placeholder removed from the Alerts page. Firmware version 1.2-setup.
+
+## Patch 2 (2026-11-04, later)
+
+App
+- Setup sections are in A-Z order. Help ("?") added to Setup (wizard, customise, every section, save/reload), Live, Logs and Device.
+- Dot font: the letter "I" no longer has the extra gap after it (digits stay fixed width). Cache v21.
+- Wizard: the sensor tick-boxes are gone (the gauge learns them from the CAN data). It now asks only about CAN keypad and GPS.
+- Wizard: new GPS module step (only if GPS is ticked): explains wiring, shows live status (off / no data / talking, searching / fix) and can switch the module on and restart the gauge.
+- Wizard: gearing and tyres has "Skip for now". Skipped = gear from the ECU, speed as the ECU reports it, no placeholder ratios. Setup says gearing is not set.
+- The phone quietly takes page/warning changes the gauge made by itself when it detected a sensor, instead of asking "settings differ".
+
+Firmware (not compiled for the ESP32 or run on hardware: please build and watch the serial log)
+- Sensor auto-detect (Setup_State.cpp, Setup_Detect): oil pressure, oil temp, fuel pressure, wideband, coolant pressure and the GPS module. First time one shows a real reading for 3 s with the engine running, its page and warning are switched on once. The simulator never counts. Gauges that already had settings start with everything "seen", so nothing changes on upgrade. Setup command {"cmd":"setupset","forget":1} starts learning again.
+- GPS: the gauge now reports whether the module is sending valid NMEA (alive) even without a fix. In gpsget and as byte 37 of the 0x04 live packet. A talking module turns the lap page on.
+- info reports "seen" (bit mask of what has been detected). Firmware 1.2-setup.
+- Syntax-checked against stub headers only.
+
+## Patch 3 (2026-11-04, later): auto-detect removed
+- Sensor auto-detect is gone from the firmware and the app (decision: what is displayed is up to the person; a page for a missing sensor just shows zero). Ignore the auto-detect lines in Patch 2.
+- Oil, fuel pressure, AFR and coolant pressure pages and warnings are turned on by hand in Setup (Gauge pages, Warnings). The wizard no longer touches them.
+- The GPS module "talking" status is kept: it is only used by the wizard's GPS step. It no longer turns any page on.
+- info no longer reports "seen"; the setupset "forget" option is removed.

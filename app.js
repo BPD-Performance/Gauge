@@ -420,18 +420,14 @@ const SHIFT_COLOURS = [["Amber", "#FFB000"], ["Red", "#FF3B1F"], ["BPD pink", "#
 function renderSettings() {
   const tyre = (p, title) => `<div class="card"><p>${title}</p><div class="grid3">${fld(p + "w", "Width")}${fld(p + "a", "Profile")}${fld(p + "r", "Rim (in)")}</div></div>`;
   $("settingsBody").innerHTML = `
-  <h2>Gearing and tyres</h2>
+  <h2>Gauge pages</h2><p class="lead">Tick the pages the gauge cycles through and use the arrows to put them in order. Turn on oil, fuel pressure, AFR and similar pages here if your car has those sensors. A page for a sensor that isn't fitted just shows zero.</p><div class="list" id="pagesBox"></div>
+  <h2>Gearing and tyres</h2><p class="lead">Used to work out the gear (from RPM and speed) and to correct the speed when your tyres differ from what the ECU was calibrated for. Not sure? Set Gear display to "Use ECU gear" and leave the rest.</p>
   <div class="grid" style="margin-bottom:10px">${sel("numGears", "Gears", [[4, 4], [5, 5], [6, 6]])}${fld("fd", "Final drive")}</div>
   <div class="grid3" id="gearBox" style="margin-bottom:10px"></div>
   ${tyre("r", "Rear tyres (fitted now)")}${tyre("f", "Front tyres")}${tyre("c", "Tyres the ECU speed is calibrated for")}
   ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"])}
   <div style="height:10px"></div>${sel("gearSrc", "Gear display", ["Work out from RPM", "Use ECU gear", "Off"])}
-  <h2>Units</h2>
-  <div class="grid">${sel("pu", "Pressure", PU)}${sel("tu", "Temperature", TU)}${sel("su", "Speed", SU)}${sel("lam", "Mixture", ["AFR", "Lambda"])}
-   ${sel("flex", "AFR stoich", [[1, "Follow ethanol content"], [0, "Fixed value"]])}${fld("stoich", "Fixed stoich")}</div>
-  <h2>Gauge pages</h2><div class="list" id="pagesBox"></div>
-  <h2>Warnings</h2><div id="warnBox"></div>
-  <h2>Screen</h2>
+  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, the Face page style, warning popups over the Face page, and the shift light ring and colour.</p>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}
    ${sel("face_style", "Face page style", [[0, "Classic (dot matrix)"], [1, "Turbo bot (16-bit)"]])}</div>
@@ -442,7 +438,11 @@ function renderSettings() {
      <select id="shift_pre" style="width:auto;min-height:36px">${SHIFT_COLOURS.map(c => `<option value="${c[1]}">${c[0]}</option>`).join("")}<option value="custom">Custom</option></select>
      <input type="color" id="shift_rgb" style="width:46px;min-height:36px;padding:2px"></span></div>
   </div>
-  <div class="actions keep"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div>
+  <h2>Units</h2><p class="lead">How pressure, temperature, speed and mixture (AFR or lambda) are shown. AFR stoich: follow the ethanol content for flex fuel, or use a fixed value.</p>
+  <div class="grid">${sel("pu", "Pressure", PU)}${sel("tu", "Temperature", TU)}${sel("su", "Speed", SU)}${sel("lam", "Mixture", ["AFR", "Lambda"])}
+   ${sel("flex", "AFR stoich", [[1, "Follow ethanol content"], [0, "Fixed value"]])}${fld("stoich", "Fixed stoich")}</div>
+  <h2>Warnings</h2><p class="lead">Each warning can be switched on or off and has its own limit. Oil, fuel and coolant pressure warnings only make sense if that sensor is fitted. The shift light sets the RPM where the ring flashes.</p><div id="warnBox"></div>
+  <div class="keep"><p class="lead"><b>Save to gauge</b> sends these settings to the gauge (or keeps them on this phone if it isn't connected). <b>Reload from gauge</b> throws away unsaved edits and shows what the gauge has now.</p><div class="actions"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div></div>
 `;
   // Face popup and shift light (older gauge firmware doesn't send these, so default them)
   $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;

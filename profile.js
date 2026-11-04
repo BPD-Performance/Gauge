@@ -5,13 +5,10 @@
 
 const Prof = (() => {
   const KEY = "bpdProfiles", ACT = "bpdActive";
+  // Only things the gauge can't work out for itself. Sensors (oil, fuel, wideband, coolant pressure) are learned from the CAN data.
   const FEATURES = [
     { k: "keypad", label: "CAN keypad", help: "Haltech CAN keypad buttons from the gauge. Adds the keypad tab and gauge page." },
-    { k: "gps", label: "GPS module (lap timer)", help: "Adds the lap timer tab and gauge page." },
-    { k: "oil", label: "Oil pressure and temperature sensors", help: "Turns on the oil gauge page and its warnings." },
-    { k: "fuel", label: "Fuel pressure sensor", help: "Turns on the fuel pressure page and its warning." },
-    { k: "afr", label: "Wideband (AFR) sensor", help: "Turns on the AFR page and the lean-on-boost warning." },
-    { k: "coolp", label: "Coolant pressure sensor", help: "Turns on the coolant pressure warning." }];
+    { k: "gps", label: "GPS module (lap timer)", help: "Adds the lap timer tab and gauge page. The next step checks the module is working." }];
   const ALL = Object.fromEntries(FEATURES.map(f => [f.k, true]));
   const PG = { boost: 0, oil: 1, afr: 2, tach: 3, coolant: 4, fuel: 5, iat: 6, monitor: 7, keypad: 8, alerts: 9, lap: 10, face: 11 };
 
@@ -72,7 +69,7 @@ const Prof = (() => {
   }
   function fittedFromSettings(s) {
     const f = clone(ALL);
-    if (s && s.on) { f.keypad = !!s.on[PG.keypad]; f.gps = !!s.on[PG.lap]; f.oil = !!s.on[PG.oil]; f.fuel = !!s.on[PG.fuel]; f.afr = !!s.on[PG.afr]; f.coolp = !!s.w_cp_on; }
+    if (s && s.on) { f.keypad = !!s.on[PG.keypad]; f.gps = !!s.on[PG.lap]; }
     return f;
   }
   function snapshot() {                          // S was saved to the gauge (or taken from it)
@@ -163,75 +160,107 @@ const Prof = (() => {
     const p = active() || create("My car", S);
     const w = { name: p.name, f: Object.assign(clone(ALL), p.fitted), pu: S.pu, tu: S.tu, su: S.su, lam: S.lam, numGears: S.numGears,
       fd: S.fd, g: [1, 2, 3, 4, 5, 6].map(i => S["g" + i]), rw: S.rw, ra: S.ra, rr: S.rr };
-    if (!p.done) {                               // first time: pre-tick what the car has been seen sending
-      const seen = k => typeof usedKeys !== "undefined" && usedKeys.has(findKey(...k));
-      w.f.oil = seen([0x361, "Oil pressure"]); w.f.fuel = seen([0x361, "Fuel pressure"]); w.f.afr = seen([0x368, "Wideband sensor 1"]);
-      w.f.keypad = !!S.on[PG.keypad]; w.f.gps = !!S.on[PG.lap]; w.f.coolp = false;
+    if (!p.done) {                               // first time: start from what the gauge already shows
+      w.f.keypad = !!S.on[PG.keypad]; w.f.gps = !!S.on[PG.lap];
     }
+    w.skipGear = false;
     const steps = [
       { t: "Name this car", body: () => `<p class="lead">Each car gets its own profile, so the gauge can move between cars and phones.</p><label for="wn">Profile name</label><input id="wn" maxlength="24" value="${esc(w.name)}">`,
         read: b => { w.name = cleanName(b.querySelector("#wn").value) || "My car"; } },
       { t: "What's fitted?", body: () => `<p class="lead">Tick what your car has. Anything unticked is hidden and its warnings are switched off, so you never see zero readings from sensors that aren't there.</p>` +
           FEATURES.map(f => `<div class="lrow"><label class="ck2"><input type="checkbox" data-f="${f.k}" ${w.f[f.k] ? "checked" : ""}> ${f.label}</label></div><div class="lead" style="margin:0 0 8px 34px">${f.help}</div>`).join(""),
         read: b => b.querySelectorAll("[data-f]").forEach(c => w.f[c.dataset.f] = c.checked) },
+      { t: "GPS module", show: () => w.f.gps, body: () => `<p class="lead">The GPS module gives the lap timer its position, and can also be the speed source and put a map on your logs. It plugs into the gauge's GPS header: module TX to the gauge's GPIO44 (RX), module RX to GPIO0 (TX), plus power and ground. It is built for u-blox M8 and M10 modules. Switching it on needs a restart of the gauge.</p>
+          <div class="card" id="gpsSt">Checking…</div><div class="actions" id="gpsAct"></div>
+          <p class="lead">Indoors it will say it is waiting for satellites. That is normal: go outside with a clear view of the sky, or finish now and check it later in Setup.</p>`,
+        init: b => { const st = b.querySelector("#gpsSt"), act = b.querySelector("#gpsAct");
+          const tick = async () => {
+            if (!connected) { st.textContent = "Connect to the gauge to check the module."; act.innerHTML = ""; return; }
+            try {
+              const r = await cmd({ cmd: "gpsget" });
+              if (!r.ok) throw new Error(r.err || "not supported");
+              const g = r.gps;
+              if (!g.on) { st.textContent = "The GPS module is switched off in the gauge."; act.innerHTML = `<button class="btn" id="wGpsOn" type="button">Switch on and restart gauge</button>`;
+                act.querySelector("#wGpsOn").onclick = async () => { act.innerHTML = ""; st.textContent = "Restarting the gauge… it will reconnect by itself."; try { await cmd({ cmd: "gpsset", on: 1 }); await cmd({ cmd: "restart" }); } catch (e) { st.textContent = "Could not switch it on: " + e.message; } }; }
+              else { act.innerHTML = "";
+                st.innerHTML = g.alive === undefined ? (g.fix ? `GPS fix, ${g.sats} satellites.` : "Switched on. Waiting for a fix.")
+                  : !g.alive ? "<b>No data from the module.</b> Check the wiring (TX and RX the right way round, power and ground) and that it is a u-blox M8 or M10."
+                  : g.fix ? `<b>GPS fix.</b> ${g.sats} satellites. Good to go.` : `<b>Module is talking.</b> Searching for satellites (${g.sats} so far). This can take a minute or two with a clear sky.`; }
+            } catch (e) { st.textContent = "Could not read the module status: " + e.message; }
+          };
+          tick(); b._gpsTimer = setInterval(tick, 1500); },
+        leave: b => clearInterval(b._gpsTimer) },
       { t: "Units", body: () => `<div class="grid">${sel("wpu", "Pressure", PU)}${sel("wtu", "Temperature", TU)}${sel("wsu", "Speed", SU)}${sel("wlam", "Mixture", ["AFR", "Lambda"])}</div>`,
         init: b => { b.querySelector("#wpu").value = w.pu; b.querySelector("#wtu").value = w.tu; b.querySelector("#wsu").value = w.su; b.querySelector("#wlam").value = w.lam; },
         read: b => { w.pu = +b.querySelector("#wpu").value; w.tu = +b.querySelector("#wtu").value; w.su = +b.querySelector("#wsu").value; w.lam = +b.querySelector("#wlam").value; } },
-      { t: "Gearing and tyres", body: () => `<p class="lead">Used to work out the gear and corrected speed. Check these against your car; the full list (front tyres, ECU calibration) is in Setup.</p>
+      { t: "Gearing and tyres", body: () => `<p class="lead">Used to work out the gear and corrected speed. Don't have these to hand? Skip for now: the gauge will show the gear from the ECU and the speed as the ECU reports it, and you can fill this in later in Setup.</p>
           <div class="grid">${sel("wng", "Gears", [[4, 4], [5, 5], [6, 6]])}${fld("wfd", "Final drive")}</div><div class="grid3" id="wg" style="margin:10px 0"></div>
           <div class="card"><p>Rear tyres</p><div class="grid3">${fld("wrw", "Width")}${fld("wra", "Profile")}${fld("wrr", "Rim (in)")}</div></div>`,
         init: b => { const g = () => { b.querySelector("#wg").innerHTML = Array.from({ length: +b.querySelector("#wng").value }, (_, i) => fld("wg" + i, "Gear " + (i + 1))).join("");
             for (let i = 0; i < +b.querySelector("#wng").value; i++) b.querySelector("#wg" + i).value = w.g[i] ?? ""; };
           b.querySelector("#wng").value = w.numGears; b.querySelector("#wfd").value = w.fd; b.querySelector("#wrw").value = w.rw; b.querySelector("#wra").value = w.ra; b.querySelector("#wrr").value = w.rr;
           g(); b.querySelector("#wng").onchange = () => { for (let i = 0; i < 6; i++) { const e = b.querySelector("#wg" + i); if (e && e.value !== "") w.g[i] = parseFloat(e.value); } w.numGears = +b.querySelector("#wng").value; g(); }; },
-        read: b => { w.numGears = +b.querySelector("#wng").value; w.fd = parseFloat(b.querySelector("#wfd").value) || w.fd;
+        skip: true,
+        read: b => { w.skipGear = false; w.numGears = +b.querySelector("#wng").value; w.fd = parseFloat(b.querySelector("#wfd").value) || w.fd;
           for (let i = 0; i < w.numGears; i++) { const v = parseFloat(b.querySelector("#wg" + i).value); if (v > 0) w.g[i] = v; }
           w.rw = parseFloat(b.querySelector("#wrw").value) || w.rw; w.ra = parseFloat(b.querySelector("#wra").value) || w.ra; w.rr = parseFloat(b.querySelector("#wrr").value) || w.rr; } },
       { t: "Review", body: () => { const on = FEATURES.filter(f => w.f[f.k]).map(f => f.label), off = FEATURES.filter(f => !w.f[f.k]).map(f => f.label);
           return `<p class="lead">Profile <b>${esc(w.name)}</b></p><div class="card"><p>Fitted</p>${on.length ? on.map(esc).join("<br>") : "Nothing extra: basic view"}</div>
             ${off.length ? `<div class="card"><p>Not fitted (hidden)</p>${off.map(esc).join("<br>")}</div>` : ""}
+            <div class="card"><p>Gearing and tyres</p>${w.skipGear ? "Skipped. Gear comes from the ECU. Fill in later in Setup." : "Entered"}</div>
+            <p class="lead">Add pages like oil, fuel pressure and AFR in Setup, under Gauge pages, if your car has those sensors.</p>
             <p class="lead">${connected ? "Finish saves this to the gauge and to this phone." : "Not connected: Finish saves it on this phone and sends it the next time you connect."}</p>`; } }];
 
     let i = 0;
+    const list = () => steps.filter(s => !s.show || s.show());
     return modal((box, close) => {
+      const leave = s => { if (s.leave) s.leave(box); };
       const draw = () => {
-        const s = steps[i];
-        box.innerHTML = `<div class="steps">STEP ${i + 1} OF ${steps.length}</div><h3>${s.t}</h3>${s.body()}
+        const s = list()[i], n = list().length;
+        box.innerHTML = `<div class="steps">STEP ${i + 1} OF ${n}</div><h3>${s.t}</h3>${s.body()}
           <div class="actions">${i ? `<button class="btn ghost" id="wb" type="button">Back</button>` : `<button class="btn ghost" id="wx" type="button">Cancel</button>`}
-          <button class="btn pink" id="wn2" type="button">${i === steps.length - 1 ? "Finish" : "Next"}</button></div>`;
+          ${s.skip ? `<button class="btn ghost" id="wsk" type="button">Skip for now</button>` : ""}
+          <button class="btn pink" id="wn2" type="button">${i === n - 1 ? "Finish" : "Next"}</button></div>`;
         if (s.init) s.init(box);
+        const sk = box.querySelector("#wsk"); if (sk) sk.onclick = () => { w.skipGear = true; leave(s); i++; draw(); };
         box.querySelector("#wn2").onclick = async () => {
           if (s.read) s.read(box);
-          if (i < steps.length - 1) { i++; draw(); return; }
+          leave(s);
+          if (i < n - 1) { i++; draw(); return; }
           box.querySelector("#wn2").disabled = true; box.querySelector("#wn2").textContent = "Saving…";
           try { await finish(w); close(true); } catch (e) { box.querySelector("#wn2").disabled = false; box.querySelector("#wn2").textContent = "Finish"; alert("Could not save to the gauge: " + e.message + ". Your answers are kept on this phone."); await finishLocalOnly(w); close(true); }
         };
-        const b = box.querySelector("#wb"); if (b) b.onclick = () => { if (s.read) s.read(box); i--; draw(); };
-        const x = box.querySelector("#wx"); if (x) x.onclick = () => close(false);
+        const b = box.querySelector("#wb"); if (b) b.onclick = () => { if (s.read) s.read(box); leave(s); i--; draw(); };
+        const x = box.querySelector("#wx"); if (x) x.onclick = () => { leave(s); close(false); };
       };
       draw();
     });
   }
 
   function applyWizard(w) {
-    S.pu = w.pu; S.tu = w.tu; S.su = w.su; S.lam = w.lam; S.numGears = w.numGears; S.fd = w.fd; S.rw = w.rw; S.ra = w.ra; S.rr = w.rr;
-    w.g.forEach((v, i) => { if (v > 0 && i < w.numGears) S["g" + (i + 1)] = v; });
+    S.pu = w.pu; S.tu = w.tu; S.su = w.su; S.lam = w.lam;
+    if (w.skipGear) { S.gearSrc = 1; S.spdSrc = 0; }                   // no placeholder ratios: gear from the ECU, speed as the ECU reports it
+    else {
+      S.numGears = w.numGears; S.fd = w.fd; S.rw = w.rw; S.ra = w.ra; S.rr = w.rr;
+      w.g.forEach((v, i) => { if (v > 0 && i < w.numGears) S["g" + (i + 1)] = v; });
+      if (S.gearSrc === 1) S.gearSrc = 0;                                // back to working the gear out from RPM
+    }
     const on = (pg, v) => { if (S.on && S.on[pg] !== undefined) S.on[pg] = v ? 1 : 0; };
     on(PG.boost, 1); on(PG.tach, 1); on(PG.coolant, 1); on(PG.iat, 1); on(PG.monitor, 1); on(PG.alerts, 1); on(PG.face, 1);
-    on(PG.oil, w.f.oil); on(PG.afr, w.f.afr); on(PG.fuel, w.f.fuel); on(PG.keypad, w.f.keypad); on(PG.lap, w.f.gps);
-    S.w_clt_on = 1; S.w_bst_on = 1; S.w_iat_on = 1; S.w_bat_on = 1; S.w_duty_on = 1; S.w_shift_on = 1;
-    S.w_op_on = w.f.oil ? 1 : 0; S.w_ot_on = w.f.oil ? 1 : 0; S.w_fd_on = w.f.fuel ? 1 : 0; S.w_lean_on = w.f.afr ? 1 : 0; S.w_cp_on = w.f.coolp ? 1 : 0;
+    on(PG.keypad, w.f.keypad); on(PG.lap, w.f.gps);
+    S.w_clt_on = 1; S.w_bst_on = 1; S.w_iat_on = 1; S.w_bat_on = 1; S.w_duty_on = 1; S.w_shift_on = 1;   // channels every ECU sends
+    // Oil, fuel, wideband and coolant-pressure pages and warnings are left for the person to turn on in Setup if the car has those sensors.
   }
   async function finishLocalOnly(w) {
     const p = active() || create(w.name, S);
     applyWizard(w);
-    p.name = w.name; p.fitted = clone(w.f); p.done = true; p.settings = clone(S); p.pending = true; p.updated = Date.now(); persist();
+    p.name = w.name; p.fitted = clone(w.f); p.done = true; p.gearSkipped = !!w.skipGear; p.settings = clone(S); p.pending = true; p.updated = Date.now(); persist();
     afterChange();
   }
   async function finish(w) {
     const p = active() || create(w.name, S);
     applyWizard(w);
-    p.name = w.name; p.fitted = clone(w.f); p.done = true; p.settings = clone(S); p.updated = Date.now();
+    p.name = w.name; p.fitted = clone(w.f); p.done = true; p.gearSkipped = !!w.skipGear; p.settings = clone(S); p.updated = Date.now();
     if (connected) { await pushGauge(p, true); p.pending = false; p.lastConnected = Date.now(); } else p.pending = true;
     persist();
     afterChange();
@@ -333,7 +362,7 @@ const Prof = (() => {
     if (!p) { el.innerHTML = `<p>No gauge saved on this phone yet</p><div class="lead msg" style="margin:0">Connect to your gauge, or run the Setup wizard.</div>`; return; }
     el.innerHTML = `<p>${esc(p.name)}${st ? ` <span class="chip">${esc(st)}</span>` : ""}</p>
       <div class="lead msg" style="margin:0">${connected ? "Connected." : "Not connected. Showing the settings saved on this phone."} Last connected ${esc(when(connected ? Date.now() : p.lastConnected))}.
-      ${p.pending ? "<br>You have changes that will be sent to the gauge next time you connect." : ""}${!p.done ? "<br>This profile hasn't been through the setup wizard yet." : ""}</div>`;
+      ${p.pending ? "<br>You have changes that will be sent to the gauge next time you connect." : ""}${!p.done ? "<br>This profile hasn't been through the setup wizard yet." : ""}${p.gearSkipped ? "<br>Gearing and tyres not set: the gauge shows the ECU's gear and speed. Fill them in below when you have them." : ""}</div>`;
   }
   function renderDevice() {
     const el = document.getElementById("profBox"); if (!el) return;
