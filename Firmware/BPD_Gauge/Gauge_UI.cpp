@@ -24,7 +24,6 @@
 #include "BLE_Link.h"
 #include "BPD_Config.h"
 #include "DotFont.h"
-#include "Skin_Iron.h"
 
 #if !LV_FONT_MONTSERRAT_16 || !LV_FONT_MONTSERRAT_24
 #error "Enable LV_FONT_MONTSERRAT_16 and LV_FONT_MONTSERRAT_24 in lvgl/src/lv_conf.h (set them to 1)"
@@ -49,15 +48,9 @@
 
 static lv_color_t C_BG, C_DIM, C_LIT, C_WARN, C_OFF, C_BRAND;
 
-// BPD Embers text rule: one text colour (bone) and one warning colour, nothing else.
-#define IRON_BONE  0xECE0C4
-#define IRON_WARN  0xFF4628
-static bool gIron = false;           // set at the start of every redraw: this redraw uses the BPD Embers look
-static void setColours(bool iron)
+static void setColours(void)
 {
-  gIron = iron;
-  if (iron) { C_BG = lv_color_hex(0x0A080A); C_LIT = lv_color_hex(IRON_BONE); C_WARN = lv_color_hex(IRON_WARN); C_OFF = lv_color_hex(0x8C8068); }
-  else      { C_BG = lv_color_hex(HEX_BG);   C_LIT = lv_color_hex(HEX_LIT);    C_WARN = lv_color_hex(HEX_WARN);  C_OFF = lv_color_hex(HEX_OFF); }
+  C_BG = lv_color_hex(HEX_BG); C_LIT = lv_color_hex(HEX_LIT); C_WARN = lv_color_hex(HEX_WARN); C_OFF = lv_color_hex(HEX_OFF);
 }
 
 // ---------------- Template geometry (480 x 480) ----------------
@@ -310,26 +303,8 @@ static void drawGrid(void)
   }
 }
 
-// BPD Embers title plaque: dark iron plate with a light top edge and a stud at each end
-static void ironPlaque(const char *t, lv_color_t fill, lv_color_t edge, lv_color_t hl)
-{
-  int w = max(154, (int)textW(t, CELL_MED) + 60);
-  int x0 = CX - w / 2, y0 = lroundf(gTitleY);
-  fillRect(x0, y0, x0 + w - 1, y0 + TH - 1, edge);
-  fillRect(x0 + 3, y0 + 3, x0 + w - 4, y0 + TH - 4, fill);
-  fillRect(x0 + 3, y0 + 3, x0 + w - 4, y0 + 4, hl);
-  fillRect(x0 + 5, y0 + TH / 2 - 2, x0 + 9, y0 + TH / 2 + 2, hl);
-  fillRect(x0 + w - 10, y0 + TH / 2 - 2, x0 + w - 6, y0 + TH / 2 + 2, hl);
-  drawText(t, CX, y0 + TH / 2.0f, CELL_MED, C_LIT, AL_CENTRE);
-}
-
 static void drawTitle(const char *t, bool warn)
 {
-  if (gIron) {
-    if (warn) ironPlaque(t, lv_color_make(120, 16, 10), lv_color_make(10, 4, 4), lv_color_make(255, 120, 80));
-    else      ironPlaque(t, lv_color_make(34, 30, 36),  lv_color_make(10, 8, 10), lv_color_make(120, 100, 80));
-    return;
-  }
   float tw = textW(t, CELL_MED);
   int w = max(TITLE_W, (int)(tw + 24));
   int ty = lroundf(gTitleY);
@@ -340,7 +315,7 @@ static void drawTitle(const char *t, bool warn)
 // ---- Page layouts ----
 static void renderGauge(const FaceState &s)
 {
-  if (!gIron) drawRing(s.seg);       // BPD Embers draws its ring in the picture behind
+  drawRing(s.seg);
   for (int k = 0; k < 5; k++) {
     float a = (135.0f + k * 60.0f) * PI / 180.0f;
     if (s.lbl[k][0]) drawText(s.lbl[k], CX + LR * cosf(a), CY + LR * sinf(a), CELL_LABEL, C_LIT, AL_CENTRE);
@@ -417,8 +392,7 @@ static void renderPopup(const FaceState &s)
   float top = gTitleY + TH, bot = tapY - 3.5f * cT;
   float g = (bot - top - hL - hV - hU) / 4;
   float yL = top + g + hL / 2, yV = yL + hL / 2 + g + hV / 2, yU = yV + hV / 2 + g + hU / 2;
-  lv_color_t cN = gIron ? C_LIT : C_WARN;          // BPD Embers: only the value turns red
-  drawText(s.pName, CX, yL, cL, cN, AL_CENTRE);
+  drawText(s.pName, CX, yL, cL, C_WARN, AL_CENTRE);
   drawText(s.pVal, CX, yV, cV, C_WARN, AL_CENTRE);
   drawText(s.pUnit, CX, yU, cU, cN, AL_CENTRE);
   drawText("TAP TO DISMISS", CX, tapY, cT, C_LIT, AL_CENTRE);
@@ -521,89 +495,12 @@ static void renderAvatar(const FaceState &s)
   drawText(s.fLine, CX, FACE_TEXT_Y, CELL_MED, C_LIT, AL_CENTRE);   // rpm and boost
 }
 
-// ---- BPD Embers: the picture behind the text is built on a 240 x 240 grid by Skin_Iron.cpp,
-// shown at 2x, then the text and plaques are drawn on top at full resolution ----
-#if LV_COLOR_16_SWAP
-  #define IRON_NATIVE(c) ((uint16_t)(((c) >> 8) | ((c) << 8)))
-#else
-  #define IRON_NATIVE(c) ((uint16_t)(c))
-#endif
-
-static void blitIron(void)
-{
-  const uint16_t *fr = Iron_Frame();
-  if (!fr) return;
-  for (int y = cv.clip.y1; y <= cv.clip.y2; y++) {
-    const uint16_t *src = fr + (y >> 1) * IRON_GRID + (cv.clip.x1 >> 1);
-    uint16_t *d = (uint16_t *)px(cv.clip.x1, y);
-    int x = cv.clip.x1;
-    if (x & 1) { *d++ = IRON_NATIVE(*src); src++; x++; }
-    if (((uintptr_t)d & 3) == 0) {
-      for (; x < cv.clip.x2; x += 2, src++, d += 2) { uint32_t c = IRON_NATIVE(*src); *(uint32_t *)d = c | (c << 16); }
-    } else {
-      for (; x < cv.clip.x2; x += 2, src++, d += 2) { uint16_t c = IRON_NATIVE(*src); d[0] = c; d[1] = c; }
-    }
-    if (x == cv.clip.x2) *d = IRON_NATIVE(*src);
-  }
-}
-
-static uint32_t dbgCompUs = 0, dbgBlitUs = 0;                     // time in the picture build and in the 2x scaling (debug overlay)
+static uint32_t dbgCompUs = 0, dbgBlitUs = 0;                     // time in the picture build and in the 2x scaling (debug overlay; the BPD Embers skin is kept in experimental_skins/)
 extern volatile uint8_t gDbgFps;
-
-// Build (only what changed) and scale the BPD Embers picture behind the text
-static void ironPicture(const uint8_t *seg, int ringMode)
-{
-  uint32_t t0 = gDbgFps ? micros() : 0;
-  Iron_ComposeGauge(seg, ringMode);
-  uint32_t t1 = gDbgFps ? micros() : 0;
-  blitIron();
-  if (gDbgFps) { dbgCompUs += t1 - t0; dbgBlitUs += micros() - t1; }
-}
-
-static void renderKnight(const FaceState &s)
-{
-  uint32_t t0 = gDbgFps ? micros() : 0;
-  Iron_ComposeKnight(s.fMood, s.fZ, s.fDx / 2, s.fDy / 2);        // movement is in whole art pixels (2 screen px)
-  uint32_t t1 = gDbgFps ? micros() : 0;
-  blitIron();
-  if (gDbgFps) { dbgCompUs += t1 - t0; dbgBlitUs += micros() - t1; }
-  uint8_t f[3], e[3], h[3];
-  Iron_MoodPlate(s.fMood, f, e, h);
-  ironPlaque(MOOD_NAME[s.fMood], lv_color_make(f[0], f[1], f[2]), lv_color_make(e[0], e[1], e[2]), lv_color_make(h[0], h[1], h[2]));
-  if (s.fMood == MOOD_SLEEP) {                                     // Zs drifting up, kept inside the avatar zone
-    drawText("Z", 340, 215 - (s.fZ % 40) / 2, 3.0f, C_LIT, AL_CENTRE);
-    drawText("Z", 362, 195 - (s.fZ % 40) / 2, 2.25f, C_LIT, AL_CENTRE);
-  }
-  drawText(s.fLine, CX, FACE_TEXT_Y, CELL_MED, C_LIT, AL_CENTRE);   // rpm and boost, same style as every other text
-  if (s.fMood == MOOD_WARN) fillAnnulus(226, 240, C_WARN);        // red band on the very edge
-}
 
 static void renderFaceInner(const FaceState &s)
 {
-  bool knight = s.mode == M_FACE && s.fStyle == FACE_KNIGHT && Iron_Ready();
-  bool iron = Iron_Ready() && s.skin == SKIN_IRON;
-  setColours(iron);
-  if (iron) {
-    switch (s.mode) {
-      case M_GAUGE:   ironPicture(s.seg, s.ring ? IRON_RING_GAUGE : IRON_RING_NONE); renderGauge(s); break;
-      case M_POPUP:   ironPicture(NULL, IRON_RING_NONE); renderPopup(s); break;
-      case M_FACE:    renderKnight(s); break;
-      default:        ironPicture(NULL, IRON_RING_NONE);
-                      if (s.mode == M_MONITOR) renderMonitor(s);
-                      else if (s.mode == M_KEYPAD) renderKeypad(s);
-                      else if (s.mode == M_ALERTS) renderAlerts(s);
-                      break;
-    }
-    if (s.mode != M_POPUP) drawText("BPD", CX, BPD_Y, CELL_LABEL, C_BRAND, AL_CENTRE);
-    if (s.rec && s.mode != M_POPUP) {
-      float rx = CX - 48;
-      drawText("REC", rx, BPD_Y, CELL_LABEL, C_WARN, AL_RIGHT);
-      float dx = rx - textW("REC", CELL_LABEL) - 14;
-      fillRect(lroundf(dx), BPD_Y - 5, lroundf(dx) + 9, BPD_Y + 4, C_WARN);
-    }
-    if (s.shift) fillAnnulus(226, 240, lv_color_hex(ui.shiftRgb));
-    return;
-  }
+  setColours();
   fillRect(cv.clip.x1, cv.clip.y1, cv.clip.x2, cv.clip.y2, C_DIM);
   switch (s.mode) {
     case M_GAUGE:   renderGauge(s); break;
@@ -710,18 +607,11 @@ static bool dirtyAreas(const FaceState &o, const FaceState &n, DirtyList &d)
   if (memcmp(&a, &b, sizeof(FaceState)) != 0) return false;
 
   if (memcmp(o.seg, n.seg, sizeof(o.seg)) != 0) {
-    bool iron = Iron_Ready() && n.skin == SKIN_IRON;
-    if (iron) {
-      int x1, y1, x2, y2, r = Iron_GaugeDirty(o.seg, n.seg, &x1, &y1, &x2, &y2);
-      if (r == 2) return false;
-      if (r == 1) addRect(d, x1 - 2, y1 - 2, x2 + 2, y2 + 2);
-    } else {
-      int ch = 0;
-      for (int i = 0; i < NSEG; i++) if (o.seg[i] != n.seg[i]) ch++;
-      if (ch > 6) return false;
-      for (int i = 0; i < NSEG; i++)
-        if (o.seg[i] != n.seg[i] && segBox[i][2] >= 0) addRect(d, segBox[i][0] - 1, segBox[i][1] - 1, segBox[i][2] + 1, segBox[i][3] + 1);
-    }
+    int ch = 0;
+    for (int i = 0; i < NSEG; i++) if (o.seg[i] != n.seg[i]) ch++;
+    if (ch > 6) return false;
+    for (int i = 0; i < NSEG; i++)
+      if (o.seg[i] != n.seg[i] && segBox[i][2] >= 0) addRect(d, segBox[i][0] - 1, segBox[i][1] - 1, segBox[i][2] + 1, segBox[i][3] + 1);
   }
   if (strcmp(o.centre, n.centre) || o.centreWarn != n.centreWarn) addText(d, o.centre, n.centre, CX, NY, n.centreCell, AL_CENTRE);
   if (strcmp(o.unit, n.unit)) addText(d, o.unit, n.unit, CX, UNIT_Y, CELL_MED, AL_CENTRE);
@@ -1086,12 +976,7 @@ static void buildFacePage(FaceState &s, uint16_t m, uint32_t now)
   else if (s.fMood == MOOD_REVERSE) s.fZ = (uint8_t)((now / 500) % 2);
   else if (s.fMood == MOOD_BORED) s.fZ = (uint8_t)((now / 700) % 32);
 
-  // the avatar belongs to the gauge skin: BPD Embers = Cinder (knight); BPD FC = the original dot-matrix model
-  s.fStyle = (ui.gaugeSkin == SKIN_IRON && Iron_Ready()) ? FACE_KNIGHT : FACE_CLASSIC;
-  if (s.fStyle == FACE_KNIGHT) {                       // Cinder moves in whole 2 px art pixels
-    s.fDx = (int8_t)(lroundf(s.fDx / 2.0f) * 2);
-    s.fDy = (int8_t)(lroundf(s.fDy / 2.0f) * 2);
-  }
+  s.fStyle = FACE_CLASSIC;                             // the original dot-matrix avatar (BPD FC)
 
   char t[12], r[8];
   if (bv) fmtP(t, sizeof(t), b, 2); else strcpy(t, "--");
@@ -1323,7 +1208,7 @@ static void updateTimer(lv_timer_t *timer)
 // ---------------- Build ----------------
 static void buildUI(void)
 {
-  setColours(false);                            // the Setup page is always drawn in the BPD FC colours
+  setColours();                                 // the Setup page is always drawn in the BPD FC colours
   lv_obj_t *scr = lv_scr_act();
   lv_obj_clean(scr);
   lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
@@ -1382,7 +1267,6 @@ void Gauge_UI_Init(void)
   C_WARN = lv_color_hex(HEX_WARN); C_OFF = lv_color_hex(HEX_OFF); C_BRAND = lv_color_hex(CFG_BRAND_COLOUR);
   computeLayout();
   buildSegTable();
-  if (!Iron_Init()) Serial.println("UI: no PSRAM for the BPD Embers skin, using BPD FC");
   buildUI();
 #if CFG_ENABLE_LIVE_UPDATES
   lv_timer_create(updateTimer, UPDATE_MS, NULL);

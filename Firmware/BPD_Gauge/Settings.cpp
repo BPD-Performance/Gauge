@@ -189,7 +189,7 @@ void Settings_Load(void)
   p.begin("bpd", true);
   { UiPrefs u; if (p.getBytes("ui", &u, sizeof(u)) == sizeof(u) && u.magic == UI_MAGIC) ui = u; }
   ui.faceStyle = FACE_CLASSIC;                                           // retired: the avatar belongs to the skin
-  if (ui.gaugeSkin > SKIN_IRON) ui.gaugeSkin = SKIN_BPDFC;
+  ui.gaugeSkin = SKIN_BPDFC;                                             // basic build: BPD FC only (BPD Embers removed)
   size_t n = p.getBytesLength("cfg");
   bool ok = false, migrated = false;
   if (n == sizeof(GaugeSettings)) {
@@ -360,7 +360,7 @@ void Settings_ApplyFrom(GaugeSettings &n, SettingGetter get)
   ui.facePopup = getI("face_popup", ui.facePopup) ? 1 : 0;      // display extras apply straight away
   ui.shiftShow  = getI("shift_show", ui.shiftShow) ? 1 : 0;
   ui.shiftRgb   = (uint32_t)getI("shift_rgb", (long)ui.shiftRgb) & 0xFFFFFF;
-  ui.gaugeSkin  = (uint8_t)constrain(getI("gauge_skin", ui.gaugeSkin), SKIN_BPDFC, SKIN_IRON);
+  ui.gaugeSkin  = SKIN_BPDFC;                                            // basic build: BPD FC only
 
   n.brightness = constrain(getI("bright", n.brightness), 10, 100);
   n.tachMax    = constrain(getI("tachmax", n.tachMax), 4000, 12000);

@@ -68,7 +68,7 @@
 #define RX_UUID       "b9d00002-6a1e-4c2a-9e3d-6b5a8f0c1d01"
 #define TX_UUID       "b9d00003-6a1e-4c2a-9e3d-6b5a8f0c1d01"
 #define LIVE_UUID     "b9d00004-6a1e-4c2a-9e3d-6b5a8f0c1d01"
-#define FW_VERSION    "1.2-setup"
+#define FW_VERSION    "1.2-basic"
 #define PROTO_VERSION 1
 
 static BLEServer *server = nullptr;
