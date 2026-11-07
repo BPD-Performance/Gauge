@@ -455,6 +455,8 @@ function renderSettings() {
   // Face popup and shift light (older gauge firmware doesn't send these, so default them)
   $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;
   $("shift_show").checked = S.shift_show === undefined ? true : !!S.shift_show;
+  $("face_popup").onchange = e => { S.face_popup = e.target.checked ? 1 : 0; sendTick({ face_popup: S.face_popup }); };
+  $("shift_show").onchange = e => { S.shift_show = e.target.checked ? 1 : 0; sendTick({ shift_show: S.shift_show }); };
   $("dbg_fps").onchange = () => cmd({ cmd: "fps", on: $("dbg_fps").checked ? 1 : 0 }).catch(() => { $("dbg_fps").checked = false; });
   const hex = "#" + ((S.shift_rgb === undefined ? 0xFFB000 : S.shift_rgb) >>> 0).toString(16).padStart(6, "0").toUpperCase();
   $("shift_rgb").value = hex;
@@ -470,8 +472,14 @@ function renderSettings() {
   gears();
   $("numGears").onchange = () => { readForm(); gears(); };
   ["pu", "tu"].forEach(k => $(k).onchange = () => { readWarns(); S[k] = +$(k).value; renderWarns(); });
-  $("gpsOn").onchange = e => Prof.setFeature("gps", e.target.checked);
+  $("gpsOn").onchange = e => {
+    Prof.setFeature("gps", e.target.checked);
+    sendTick({ on: S.on });
+    // GPS only starts after a restart: offer it rather than do it
+    if (connected && confirm("GPS changes take effect after the gauge restarts. Restart it now?")) cmd({ cmd: "restart" }).catch(() => {});
+  };
   renderPages(); renderWarns();
+  WARN.forEach(w => $(w.key + "_on").onchange = e => { S[w.key + "_on"] = e.target.checked ? 1 : 0; sendTick({ [w.key + "_on"]: S[w.key + "_on"] }); });
   $("saveBtn").onclick = saveSettings;
   $("reloadBtn").disabled = !connected;
   $("reloadBtn").onclick = () => loadSettings(true).catch(e => $("msg").textContent = e.message);
@@ -484,11 +492,20 @@ function renderPages() {
   $("pagesBox").innerHTML = S.order.map((p, i) => `<div class="pg"><input type="checkbox" aria-label="Show ${PAGES[p]}" data-on="${p}" ${S.on[p] ? "checked" : ""} style="width:24px;height:24px;min-height:0">
     <span>${PAGES[p]}</span><button class="mv" type="button" data-up="${i}" ${i == 0 ? "disabled" : ""} aria-label="Move ${PAGES[p]} earlier">↑</button>
     <button class="mv" type="button" data-dn="${i}" ${i == S.order.length - 1 ? "disabled" : ""} aria-label="Move ${PAGES[p]} later">↓</button></div>`).join("");
-  $("pagesBox").querySelectorAll("[data-on]").forEach(c => c.onchange = () => S.on[c.dataset.on] = c.checked ? 1 : 0);
+  $("pagesBox").querySelectorAll("[data-on]").forEach(c => c.onchange = () => { S.on[c.dataset.on] = c.checked ? 1 : 0; sendTick({ on: S.on }); });
   $("pagesBox").querySelectorAll("[data-up]").forEach(b => b.onclick = () => { const i = +b.dataset.up; [S.order[i - 1], S.order[i]] = [S.order[i], S.order[i - 1]]; renderPages(); });
   $("pagesBox").querySelectorAll("[data-dn]").forEach(b => b.onclick = () => { const i = +b.dataset.dn; [S.order[i + 1], S.order[i]] = [S.order[i], S.order[i + 1]]; renderPages(); });
 }
 
+// Tick boxes are sent to the gauge as soon as they change, while it is connected. Numbers still wait for Save.
+// Only the changed setting is sent; the gauge keeps every setting it was not sent.
+async function sendTick(fields) {
+  if (!connected || !S) return;
+  try {
+    const r = await cmd({ cmd: "set", ...fields });
+    $("msg").textContent = r.ok ? "Sent to the gauge." : "Not sent: " + r.err;
+  } catch (e) { $("msg").textContent = "Not sent: " + e.message; }
+}
 function renderWarns() {
   $("warnBox").innerHTML = WARN.map(w => `<div class="card"><div class="chk" style="margin-bottom:8px"><input type="checkbox" id="${w.key}_on" ${S[w.key + "_on"] ? "checked" : ""}>
     <label for="${w.key}_on" style="margin:0;color:var(--ink);font-size:1rem">${w.title}</label></div>
