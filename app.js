@@ -423,7 +423,7 @@ function renderSettings() {
   S.lam = 1;                                     // lambda only: no AFR / stoich setting
   const tyre = (p, title) => `<div class="card"><p>${title}</p><div class="grid3">${fld(p + "w", "Width")}${fld(p + "a", "Profile")}${fld(p + "r", "Rim (in)")}</div></div>`;
   $("settingsBody").innerHTML = `
-  <div class="card"><label class="ck2"><input type="checkbox" id="gpsOn" ${Prof.fitted().gps ? "checked" : ""}> GPS module fitted (lap timer)</label>
+  <div class="card"><label class="ck2"><input type="checkbox" id="gpsFitted" ${Prof.fitted().gps ? "checked" : ""}> GPS module fitted (lap timer)</label>
     <div class="lead" style="margin:6px 0 0">Turns the lap timer tab and the lap timer gauge page on or off together. Switch it off if this car has no GPS module. Ticking or unticking it updates your saved profile straight away, and the gauge too when it is connected.</div></div>
   <h2>Pages the gauge shows</h2><p class="lead">Tick the pages that appear on the gauge, and use the arrows to set their order. Swiping the gauge moves through them in this order. The ticked pages are also the choices in the Edit drop-down on the Gauge tab. Turn on oil, fuel pressure, AFR or any other page your car has sensors for. A page with no sensor fitted shows zero.</p><div class="list" id="pagesBox"></div>
   <div class="card"><label class="ck2"><input type="checkbox" id="showGear" ${localStorage.getItem("showGear") === "1" ? "checked" : ""} onchange="localStorage.setItem('showGear', this.checked ? '1' : '0'); document.getElementById('gearAdv').hidden = !this.checked"> Show gearing and tyre settings</label>
@@ -472,7 +472,7 @@ function renderSettings() {
   gears();
   $("numGears").onchange = () => { readForm(); gears(); };
   ["pu", "tu"].forEach(k => $(k).onchange = () => { readWarns(); S[k] = +$(k).value; renderWarns(); });
-  $("gpsOn").onchange = e => {
+  $("gpsFitted").onchange = e => {
     Prof.setFeature("gps", e.target.checked);
     sendTick({ on: S.on });
     // GPS only starts after a restart: offer it rather than do it
