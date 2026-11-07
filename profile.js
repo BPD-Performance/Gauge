@@ -347,6 +347,35 @@ const Prof = (() => {
       <div class="lead msg" style="margin:0">${connected ? "Connected." : "Not connected. Showing the settings saved on this phone."} Last connected ${esc(when(connected ? Date.now() : p.lastConnected))}.
       ${p.pending ? "<br>You have changes that will be sent to the gauge next time you connect." : ""}${!p.done ? "<br>This profile hasn't been through the setup wizard yet." : ""}</div>`;
   }
+  const SPD_NAMES = ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"];
+  const GEAR_NAMES = ["Work out from RPM", "Use ECU gear", "Off"];
+  // What a profile remembers, in plain words (read-only: change these in Setup)
+  function savedList(p) {
+    if (!p || !p.settings) return `<div class="lead">Nothing saved for this car yet. Connect to the gauge to save its settings.</div>`;
+    const s = p.settings, f = p.fitted || ALL, on = s.on || [];
+    const pages = PAGES.filter((_, i) => on[i]).join(", ") || "none";
+    const rows = [
+      ["GPS module and lap timer", f.gps ? "On" : "Off"],
+      ["CAN keypad", f.keypad ? "On" : "Off"],
+      ["Pages shown", pages],
+      ["Brightness", s.bright != null ? s.bright + "%" : "-"],
+      ["Tach dial max", s.tachmax],
+      ["Gears", s.numGears],
+      ["Final drive", s.fd],
+      ["Speed comes from", SPD_NAMES[s.spdSrc] ?? "-"],
+      ["Gear display", GEAR_NAMES[s.gearSrc] ?? "-"],
+    ];
+    return `<table class="diff">${rows.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(String(v ?? "-"))}</td></tr>`).join("")}</table>`;
+  }
+  // Settings switch (GPS): same flag as Setup > Customise tabs, plus the lap timer gauge page
+  function setFeature(k, v) {
+    const p = active() || create("My car", S);
+    p.fitted = Object.assign(clone(p.fitted || ALL), { [k]: !!v }); persist();
+    if (k === "gps" && S && S.on) S.on[PG.lap] = v ? 1 : 0;
+    if (typeof rebuildNav === "function") rebuildNav();
+    if (typeof renderPages === "function") renderPages();
+    renderDevice();
+  }
   function renderDevice() {
     const el = document.getElementById("profBox"); if (!el) return;
     const ids = Object.keys(profiles).sort((a, b) => (profiles[b].lastConnected || 0) - (profiles[a].lastConnected || 0));
@@ -354,6 +383,7 @@ const Prof = (() => {
         return `<div class="pr"><span class="nm">${esc(p.name)}<br><small class="lead msg" style="margin:0">Last connected ${esc(when(p.lastConnected))}</small></span>${id === activeId ? `<span class="act">ACTIVE</span>` :
           `<button class="btn ghost" type="button" data-load="${id}">Load</button>`}</div>`; }).join("") : `<div class="empty">No profiles yet. Connect to your gauge or run the Setup wizard.</div>`}
       <div class="lead" style="margin:8px 0 0">A profile holds everything for one car: what's fitted and all the gauge settings (not the Bluetooth PIN). Load a profile to put it on the connected gauge, for example after moving the gauge to another car.</div></div>
+      <h2>Saved in ${esc(active() ? active().name : "this profile")}</h2>${savedList(active())}
       <div class="actions"><button class="btn ghost" id="pNew" type="button">Save as new</button><button class="btn ghost" id="pRen" type="button" ${active() ? "" : "disabled"}>Rename</button>
         <button class="btn ghost red" id="pDel" type="button" ${active() ? "" : "disabled"}>Delete</button></div>
       <div class="actions"><button class="btn ghost" id="pExp" type="button" ${active() ? "" : "disabled"}>Save to phone file</button><button class="btn ghost" id="pImp" type="button">Open from file</button></div>
@@ -370,5 +400,5 @@ const Prof = (() => {
     el.querySelector("#pRes").onclick = restoreSd;
   }
 
-  return { onConnect, wizard, customise, snapshot, saveLocal, active, fitted, renderBar, renderDevice, hasProfile: () => !!active(), cached: () => active() && active().settings ? clone(active().settings) : null };
+  return { onConnect, wizard, customise, setFeature, snapshot, saveLocal, active, fitted, renderBar, renderDevice, hasProfile: () => !!active(), cached: () => active() && active().settings ? clone(active().settings) : null };
 })();
