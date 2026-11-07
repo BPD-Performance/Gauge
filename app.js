@@ -429,10 +429,9 @@ function renderSettings() {
   ${tyre("r", "Rear tyres (fitted now)")}${tyre("f", "Front tyres")}${tyre("c", "Tyres the ECU speed is calibrated for")}
   ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"])}
   <div style="height:10px"></div>${sel("gearSrc", "Gear display", ["Work out from RPM", "Use ECU gear", "Off"])}
-  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, the gauge skin (each skin has its own avatar), warning popups over the Face page, and the shift light ring and colour.</p>
+  <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, warning popups over the Face page, and the shift light ring and colour.</p>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
-   ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}
-   ${sel("gauge_skin", "Gauge skin", [[0, "BPD FC"], [1, "BPD Embers"]])}</div>
+   ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
   <div class="list" style="margin-top:12px">
    <div class="lrow"><label class="ck2"><input type="checkbox" id="face_popup"> Show warning popups over the Face page</label></div>
    <div class="lrow"><label class="ck2"><input type="checkbox" id="shift_show"> Flash the shift light ring</label></div>
@@ -449,8 +448,6 @@ function renderSettings() {
   // Face popup and shift light (older gauge firmware doesn't send these, so default them)
   $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;
   $("shift_show").checked = S.shift_show === undefined ? true : !!S.shift_show;
-  $("gauge_skin").value = S.gauge_skin === undefined ? 0 : S.gauge_skin;     // older firmware: BPD FC only
-  $("gauge_skin").disabled = S.gauge_skin === undefined;
   $("dbg_fps").onchange = () => cmd({ cmd: "fps", on: $("dbg_fps").checked ? 1 : 0 }).catch(() => { $("dbg_fps").checked = false; });
   const hex = "#" + ((S.shift_rgb === undefined ? 0xFFB000 : S.shift_rgb) >>> 0).toString(16).padStart(6, "0").toUpperCase();
   $("shift_rgb").value = hex;
@@ -497,7 +494,6 @@ function readForm() {
   for (let i = 1; i <= 6; i++) if ($("g" + i)) S["g" + i] = parseFloat($("g" + i).value);
   S.face_popup = $("face_popup").checked ? 1 : 0;
   S.shift_show = $("shift_show").checked ? 1 : 0;
-  if (S.gauge_skin !== undefined) S.gauge_skin = +$("gauge_skin").value;
   S.shift_rgb = parseInt($("shift_rgb").value.slice(1), 16);
   readWarns();
 }
@@ -535,7 +531,7 @@ $("defaultsBtn").onclick = async () => {
 // and a laptop can show different numbers of gauges. The grid works out the column count
 // that makes the faces as big as possible, and stops adding once faces would get smaller
 // than MIN_FACE (still readable).
-const FACE_GAP = 12, MAX_FACE = 900;
+const FACE_GAP = 12, MAX_FACE = 900, BAR_H = 56;   // BAR_H = edit bar height (50px) + its top margin (6px)
 const SIZE_MIN = { small: 160, medium: 240, large: 330 };      // smallest face for each size setting (screen px)
 const SIMPLE_BELOW = 270;                                        // faces smaller than this drop the fine detail
 const minFace = () => SIZE_MIN[localStorage.getItem("faceSize") || "small"] || 160;
@@ -568,7 +564,7 @@ function bestFit(n, sp) {
   let best = 0, cols = 1;
   for (let c = 1; c <= n; c++) {
     const r = Math.ceil(n / c);
-    const size = Math.min((sp.W - (c - 1) * FACE_GAP) / c, (sp.H - (r - 1) * FACE_GAP) / r);
+    const size = Math.min((sp.W - (c - 1) * FACE_GAP) / c, (sp.H - (r - 1) * FACE_GAP) / r - BAR_H);
     if (size > best) { best = size; cols = c; }
   }
   return { size: Math.floor(Math.min(best, MAX_FACE)), cols };
@@ -603,15 +599,14 @@ function buildFaces() {
     cv.className = "face"; cv.width = 480; cv.height = 480;
     cv.setAttribute("aria-label", "Gauge: " + PAGES[type]);
     wrap.appendChild(cv);
-    if (editMode) {
-      const ed = document.createElement("div");
-      ed.className = "ed";
-      ed.innerHTML = `<select aria-label="Page for gauge ${i + 1}">${allowed.map(p => `<option value="${p}" ${p === type ? "selected" : ""}>${PAGES[p]}</option>`).join("")}</select>
-        <button class="btn ghost" type="button" aria-label="Remove gauge ${i + 1}">X</button>`;
-      ed.querySelector("select").onchange = e => { tiles[i] = +e.target.value; saveTiles(); };
-      ed.querySelector("button").onclick = () => { if (tiles.length > 1) { tiles.splice(i, 1); saveTiles(); buildFaces(); } };
-      wrap.appendChild(ed);
-    }
+    // The bar is always built and always takes its space; it is only hidden (and unclickable) outside Edit
+    const ed = document.createElement("div");
+    ed.className = "ed" + (editMode ? "" : " off");
+    ed.innerHTML = `<select aria-label="Page for gauge ${i + 1}">${allowed.map(p => `<option value="${p}" ${p === type ? "selected" : ""}>${PAGES[p]}</option>`).join("")}</select>
+      <button class="btn ghost" type="button" aria-label="Remove gauge ${i + 1}">X</button>`;
+    ed.querySelector("select").onchange = e => { tiles[i] = +e.target.value; saveTiles(); };
+    ed.querySelector("button").onclick = () => { if (tiles.length > 1) { tiles.splice(i, 1); saveTiles(); buildFaces(); } };
+    wrap.appendChild(ed);
     $("faces").appendChild(wrap);
     const el = { wrap, cv, ctx: cv.getContext("2d") };
     tileEls.push(el);
@@ -826,6 +821,8 @@ setInterval(gpsCheck, 4000);
 demoCheck();
 
 // Auto-connect: reconnect to the gauge this browser has already paired with
+// This browser can't look up paired gauges (Web Bluetooth paired-device lookup is missing): hide the option, Connect still works
+if (!navigator.bluetooth || !navigator.bluetooth.getDevices) $("autoConnRow").style.display = "none";
 $("autoConn").checked = localStorage.getItem("autoConn") !== "0";
 $("autoConn").onchange = () => localStorage.setItem("autoConn", $("autoConn").checked ? "1" : "0");
 async function autoConnect() {
