@@ -285,7 +285,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="card" id="profBar"></div>
  <p class="lead">Every gauge setting lives here. They are saved on this phone for each car, so you can look at and change them even when the gauge isn't connected; changes are sent to the gauge next time you connect (it asks first if they differ).</p>
  <div class="actions"><button class="btn" id="wizBtn" type="button">Setup wizard</button><button class="btn ghost" id="custBtn" type="button">Customise tabs</button></div>
- <p class="lead"><b>Setup wizard</b> asks a few questions (what's fitted, GPS check, units, gearing) and switches on the right pages and warnings. Run it again any time. <b>Customise tabs</b> chooses which optional tabs (CAN keypad, Lap timer) show in the bar at the bottom.</p>
+ <p class="lead"><b>Setup wizard</b> asks a few questions (what's fitted, GPS check, units) and switches on the right pages and warnings. Run it again any time. <b>Customise tabs</b> chooses which optional tabs (CAN keypad, Lap timer) show in the bar at the bottom.</p>
  <div id="settingsBody"><div class="empty">Connect to the gauge to load its settings.</div></div>
  <p id="msg" role="status"></p>
 </section>
@@ -298,15 +298,17 @@ details.sec[open]>summary .pm::before{content:"-"}
   <button class="btn ghost" id="forgetBtn" type="button">Disconnect</button>
   <button class="btn warn" id="defaultsBtn" type="button">Reset gauge settings</button>
  </div>
- <h2>Car profile</h2>
+ <details class="sec" id="profSec"><summary><span>Car profile</span><span class="pm" aria-hidden="true"></span></summary><div class="secbody">
+ <p class="lead">Saves the settings for one car, so you can switch between cars. Open this only when you want to save, rename or switch cars.</p>
  <div id="profBox"></div>
- <h2>This device</h2>
+ </div></details>
+ <h2>Opening the app</h2>
  <div class="card">
-  <label for="startTab">Start-up tab (this device)</label>
+  <label for="startTab">Screen to open first</label>
   <select id="startTab"><option value="gauge">Gauge</option><option value="keypad">CAN keypad</option><option value="live">Live</option><option value="lap">Lap timer</option><option value="logs">Logs</option></select>
-  <div class="lead" style="margin:8px 0 0">Which tab this app opens on each time you start it on this phone, laptop or head unit. It does not change what the gauge itself shows. Handy for a head unit: set it to Gauge (then use Full screen) or CAN keypad.</div>
+  <div class="lead" style="margin:8px 0 0">The screen the app opens on each time you start it on this device. It does not change what the gauge itself shows. Handy for a head unit: set it to Gauge (then use Full screen) or CAN keypad.</div>
  </div>
- <h2>Gauge tab on this device</h2>
+ <h2>Gauge look</h2>
  <div class="card">
   <div class="grid"><div><label for="faceSize">Gauge size</label><select id="faceSize"><option value="small">Small (most gauges)</option><option value="medium">Medium</option><option value="large">Large (easiest to read)</option></select></div>
    <div><label for="faceStyle">Display style</label><select id="faceStyle"><option value="dot">Dot matrix</option><option value="clear">Clear (no dots, black)</option></select></div></div>

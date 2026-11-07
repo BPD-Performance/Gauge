@@ -193,21 +193,9 @@ const Prof = (() => {
       { t: "Units", body: () => `<div class="grid">${sel("wpu", "Pressure", PU)}${sel("wtu", "Temperature", TU)}${sel("wsu", "Speed", SU)}</div>`,
         init: b => { b.querySelector("#wpu").value = w.pu; b.querySelector("#wtu").value = w.tu; b.querySelector("#wsu").value = w.su; },
         read: b => { w.pu = +b.querySelector("#wpu").value; w.tu = +b.querySelector("#wtu").value; w.su = +b.querySelector("#wsu").value; } },
-      { t: "Gearing and tyres", body: () => `<p class="lead">Used to work out the gear and corrected speed. Don't have these to hand? Skip for now: the gauge will show the gear from the ECU and the speed as the ECU reports it, and you can fill this in later in Setup.</p>
-          <div class="grid">${sel("wng", "Gears", [[4, 4], [5, 5], [6, 6]])}${fld("wfd", "Final drive")}</div><div class="grid3" id="wg" style="margin:10px 0"></div>
-          <div class="card"><p>Rear tyres</p><div class="grid3">${fld("wrw", "Width")}${fld("wra", "Profile")}${fld("wrr", "Rim (in)")}</div></div>`,
-        init: b => { const g = () => { b.querySelector("#wg").innerHTML = Array.from({ length: +b.querySelector("#wng").value }, (_, i) => fld("wg" + i, "Gear " + (i + 1))).join("");
-            for (let i = 0; i < +b.querySelector("#wng").value; i++) b.querySelector("#wg" + i).value = w.g[i] ?? ""; };
-          b.querySelector("#wng").value = w.numGears; b.querySelector("#wfd").value = w.fd; b.querySelector("#wrw").value = w.rw; b.querySelector("#wra").value = w.ra; b.querySelector("#wrr").value = w.rr;
-          g(); b.querySelector("#wng").onchange = () => { for (let i = 0; i < 6; i++) { const e = b.querySelector("#wg" + i); if (e && e.value !== "") w.g[i] = parseFloat(e.value); } w.numGears = +b.querySelector("#wng").value; g(); }; },
-        skip: true,
-        read: b => { w.skipGear = false; w.numGears = +b.querySelector("#wng").value; w.fd = parseFloat(b.querySelector("#wfd").value) || w.fd;
-          for (let i = 0; i < w.numGears; i++) { const v = parseFloat(b.querySelector("#wg" + i).value); if (v > 0) w.g[i] = v; }
-          w.rw = parseFloat(b.querySelector("#wrw").value) || w.rw; w.ra = parseFloat(b.querySelector("#wra").value) || w.ra; w.rr = parseFloat(b.querySelector("#wrr").value) || w.rr; } },
       { t: "Review", body: () => { const on = FEATURES.filter(f => w.f[f.k]).map(f => f.label), off = FEATURES.filter(f => !w.f[f.k]).map(f => f.label);
           return `<p class="lead">Profile <b>${esc(w.name)}</b></p><div class="card"><p>Fitted</p>${on.length ? on.map(esc).join("<br>") : "Nothing extra: basic view"}</div>
             ${off.length ? `<div class="card"><p>Not fitted (hidden)</p>${off.map(esc).join("<br>")}</div>` : ""}
-            <div class="card"><p>Gearing and tyres</p>${w.skipGear ? "Skipped. Gear comes from the ECU. Fill in later in Setup." : "Entered"}</div>
             <p class="lead">Add pages like oil, fuel pressure and AFR in Setup, under Gauge pages, if your car has those sensors.</p>
             <p class="lead">${connected ? "Finish saves this to the gauge and to this phone." : "Not connected: Finish saves it on this phone and sends it the next time you connect."}</p>`; } }];
 
@@ -239,12 +227,7 @@ const Prof = (() => {
 
   function applyWizard(w) {
     S.pu = w.pu; S.tu = w.tu; S.su = w.su; S.lam = 1;      // mixture is always lambda
-    if (w.skipGear) { S.gearSrc = 1; S.spdSrc = 0; }                   // no placeholder ratios: gear from the ECU, speed as the ECU reports it
-    else {
-      S.numGears = w.numGears; S.fd = w.fd; S.rw = w.rw; S.ra = w.ra; S.rr = w.rr;
-      w.g.forEach((v, i) => { if (v > 0 && i < w.numGears) S["g" + (i + 1)] = v; });
-      if (S.gearSrc === 1) S.gearSrc = 0;                                // back to working the gear out from RPM
-    }
+    S.gearSrc = 1; S.spdSrc = 0;                   // no placeholder ratios: gear from the ECU, speed as the ECU reports it
     const on = (pg, v) => { if (S.on && S.on[pg] !== undefined) S.on[pg] = v ? 1 : 0; };
     on(PG.boost, 1); on(PG.tach, 1); on(PG.coolant, 1); on(PG.iat, 1); on(PG.monitor, 1); on(PG.alerts, 1); on(PG.face, 1);
     on(PG.keypad, w.f.keypad); on(PG.lap, w.f.gps);
@@ -362,7 +345,7 @@ const Prof = (() => {
     if (!p) { el.innerHTML = `<p>No gauge saved on this phone yet</p><div class="lead msg" style="margin:0">Connect to your gauge, or run the Setup wizard.</div>`; return; }
     el.innerHTML = `<p>${esc(p.name)}${st ? ` <span class="chip">${esc(st)}</span>` : ""}</p>
       <div class="lead msg" style="margin:0">${connected ? "Connected." : "Not connected. Showing the settings saved on this phone."} Last connected ${esc(when(connected ? Date.now() : p.lastConnected))}.
-      ${p.pending ? "<br>You have changes that will be sent to the gauge next time you connect." : ""}${!p.done ? "<br>This profile hasn't been through the setup wizard yet." : ""}${p.gearSkipped ? "<br>Gearing and tyres not set: the gauge shows the ECU's gear and speed. Fill them in below when you have them." : ""}</div>`;
+      ${p.pending ? "<br>You have changes that will be sent to the gauge next time you connect." : ""}${!p.done ? "<br>This profile hasn't been through the setup wizard yet." : ""}</div>`;
   }
   function renderDevice() {
     const el = document.getElementById("profBox"); if (!el) return;

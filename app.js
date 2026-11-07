@@ -422,13 +422,17 @@ function renderSettings() {
   S.lam = 1;                                     // lambda only: no AFR / stoich setting
   const tyre = (p, title) => `<div class="card"><p>${title}</p><div class="grid3">${fld(p + "w", "Width")}${fld(p + "a", "Profile")}${fld(p + "r", "Rim (in)")}</div></div>`;
   $("settingsBody").innerHTML = `
-  <h2>Gauge pages</h2><p class="lead">Tick the pages the gauge cycles through and use the arrows to put them in order. Turn on oil, fuel pressure, AFR and similar pages here if your car has those sensors. A page for a sensor that isn't fitted just shows zero.</p><div class="list" id="pagesBox"></div>
+  <h2>Pages the gauge shows</h2><p class="lead">Tick the pages that appear on the gauge, and use the arrows to set their order. Swiping the gauge moves through them in this order. The ticked pages are also the choices in the Edit drop-down on the Gauge tab. Turn on oil, fuel pressure, AFR or any other page your car has sensors for. A page with no sensor fitted shows zero.</p><div class="list" id="pagesBox"></div>
+  <div class="card"><label class="ck2"><input type="checkbox" id="showGear" ${localStorage.getItem("showGear") === "1" ? "checked" : ""} onchange="localStorage.setItem('showGear', this.checked ? '1' : '0'); document.getElementById('gearAdv').hidden = !this.checked"> Show gearing and tyre settings</label>
+    <div class="lead" style="margin:6px 0 0">Only needed if your gears or tyres differ from what the ECU expects. The gauge works without them.</div></div>
+  <div id="gearAdv" ${localStorage.getItem("showGear") === "1" ? "" : "hidden"}>
   <h2>Gearing and tyres</h2><p class="lead">Used to work out the gear (from RPM and speed) and to correct the speed when your tyres differ from what the ECU was calibrated for. Not sure? Set Gear display to "Use ECU gear" and leave the rest.</p>
   <div class="grid" style="margin-bottom:10px">${sel("numGears", "Gears", [[4, 4], [5, 5], [6, 6]])}${fld("fd", "Final drive")}</div>
   <div class="grid3" id="gearBox" style="margin-bottom:10px"></div>
   ${tyre("r", "Rear tyres (fitted now)")}${tyre("f", "Front tyres")}${tyre("c", "Tyres the ECU speed is calibrated for")}
   ${sel("spdSrc", "ECU speed comes from", ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"])}
   <div style="height:10px"></div>${sel("gearSrc", "Gear display", ["Work out from RPM", "Use ECU gear", "Off"])}
+  </div>
   <h2>Screen</h2><p class="lead">Brightness, the tach dial's top RPM, how long each warning shows when several are active, warning popups over the Face page, and the shift light ring and colour.</p>
   <div class="grid">${fld("bright", "Brightness (%)")}${sel("tachmax", "Tach dial max", [[7000, 7000], [8000, 8000], [9000, 9000], [10000, 10000]])}
    ${sel("acycle", "Warning swap time", [[1000, "1 s"], [1500, "1.5 s"], [2000, "2 s"], [3000, "3 s"], [4000, "4 s"], [5000, "5 s"]])}</div>
