@@ -672,13 +672,33 @@ $("gAdd").onclick = () => {
   tiles.push(allowed.find(p => !used.has(p)) ?? allowed[0]);   // next page not already shown
   saveTiles(); buildFaces();
 };
-$("gEdit").onclick = () => { editMode = !editMode; $("gEdit").textContent = editMode ? "Done" : "Edit"; buildFaces(); };
+$("gEdit").onclick = () => { editMode = !editMode; $("gEdit").textContent = editMode ? "Done" : "Edit"; buildFaces(); showChrome(); };
 $("gFull").onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else if ($("tab-gauge").requestFullscreen) $("tab-gauge").requestFullscreen().catch(() => {});
 };
+// Full screen: the top bar hides on its own. A tap shows it for a few seconds, then it hides again.
+// Swipe down from the top edge to leave full screen.
+const tabGauge = $("tab-gauge");
+const CHROME_SHOW_MS = 3000;
+let chromeTimer = 0, swipeFrom = null;
+function showChrome() {
+  tabGauge.classList.remove("chromeHidden");
+  clearTimeout(chromeTimer);
+  if (document.fullscreenElement === tabGauge && !editMode)
+    chromeTimer = setTimeout(() => tabGauge.classList.add("chromeHidden"), CHROME_SHOW_MS);
+}
+tabGauge.addEventListener("pointerdown", e => { swipeFrom = e.clientY < 90 ? { x: e.clientX, y: e.clientY } : null; });
+tabGauge.addEventListener("pointerup", e => {
+  if (document.fullscreenElement !== tabGauge) return;
+  const s = swipeFrom; swipeFrom = null;
+  if (s && e.clientY - s.y > 90 && Math.abs(e.clientX - s.x) < (e.clientY - s.y) * 0.6) { document.exitFullscreen(); return; }
+  showChrome();
+});
 document.addEventListener("fullscreenchange", () => {
   $("gFull").textContent = document.fullscreenElement ? "Exit full screen" : "Full screen";
+  if (document.fullscreenElement === tabGauge) showChrome();
+  else { clearTimeout(chromeTimer); tabGauge.classList.remove("chromeHidden"); }
   setTimeout(layoutFaces, 50);
 });
 window.addEventListener("resize", () => layoutFaces());
