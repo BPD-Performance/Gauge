@@ -612,6 +612,9 @@ function layoutFaces() {
   $("gAdd").disabled = tiles.length >= cap;
 }
 
+// Refit whenever the space for the faces changes: the Edit toolbar, the demo banner, rotation
+if (window.ResizeObserver) new ResizeObserver(() => layoutFaces()).observe($("faces"));
+
 function buildFaces() {
   const allowed = allowedPages();
   tiles = tiles.map(t => allowed.includes(t) ? t : allowed[0]);
