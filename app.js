@@ -384,7 +384,8 @@ const WARN = [
   { key: "w_duty", title: "Injector duty high", f: [["w_duty", "Above (%)", "r"]] }];
 const uLbl = k => k == "p" ? PU[S.pu] : k == "t" ? TU[S.tu] : "";
 const shown = (v, k) => k == "p" ? pTo(v, S.pu).toFixed(S.pu == 1 ? 2 : S.pu == 2 ? 1 : 0) : k == "t" ? tTo(v, S.tu).toFixed(0) : k == "l" ? (+v).toFixed(2) : k == "v" ? (+v).toFixed(1) : Math.round(v);
-const metric = (v, k) => { v = parseFloat(v); return k == "p" ? pFrom(v, S.pu) : k == "t" ? tFrom(v, S.tu) : v; };
+// Pressures are stored by the gauge to one decimal place, so round here or the app and gauge disagree by rounding alone
+const metric = (v, k) => { v = parseFloat(v); if (k == "p") return Math.round(pFrom(v, S.pu) * 10) / 10; return k == "t" ? tFrom(v, S.tu) : v; };
 const fld = (id, label, attrs = "") => `<div><label for="${id}">${label}</label><input id="${id}" inputmode="decimal" ${attrs}></div>`;
 const sel = (id, label, opts) => `<div><label for="${id}">${label}</label><select id="${id}">${opts.map((o, i) => `<option value="${Array.isArray(o) ? o[0] : i}">${Array.isArray(o) ? o[1] : o}</option>`).join("")}</select></div>`;
 

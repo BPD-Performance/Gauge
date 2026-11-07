@@ -51,11 +51,17 @@ const Prof = (() => {
   // ---------- comparing settings ----------
   const LABELS = { pu: "Pressure unit", tu: "Temperature unit", su: "Speed unit", lam: "Mixture", fd: "Final drive", numGears: "Gears", bright: "Brightness", tachmax: "Tach max",
     w_clt: "Coolant hot", w_op: "Low oil pressure", w_bst: "Overboost", w_lean: "Lean on boost", w_ot: "Oil hot", w_shift: "Shift light", on: "Pages on", order: "Page order" };
-  const norm = v => typeof v === "number" ? Math.round(v * 1000) / 1000 : Array.isArray(v) ? v.map(norm) : v;
+  // Both sides are rounded to what the gauge stores: pressure warnings to 0.1, everything else to 0.001.
+  // Applied to both the saved copy and the gauge's copy, so unit conversions cannot make them disagree.
+  const pressureKeys = () => (typeof WARN !== "undefined" ? WARN : []).flatMap(w => w.f.filter(f => f[2] === "p").map(f => f[0]));
+  const norm = (v, k) => {
+    if (typeof v === "number") return k && pressureKeys().includes(k) ? Math.round(v * 10) / 10 : Math.round(v * 1000) / 1000;
+    return Array.isArray(v) ? v.map(x => norm(x)) : v;
+  };
   function diff(a, b) {
     const out = [];
     new Set([...Object.keys(a || {}), ...Object.keys(b || {})]).forEach(k => {
-      if (JSON.stringify(norm(a[k])) !== JSON.stringify(norm(b[k]))) out.push(k);
+      if (JSON.stringify(norm(a[k], k)) !== JSON.stringify(norm(b[k], k))) out.push(k);
     });
     return out;
   }
