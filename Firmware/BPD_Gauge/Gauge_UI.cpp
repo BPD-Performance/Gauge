@@ -394,7 +394,7 @@ static void renderPopup(const FaceState &s)
   float yL = top + g + hL / 2, yV = yL + hL / 2 + g + hV / 2, yU = yV + hV / 2 + g + hU / 2;
   drawText(s.pName, CX, yL, cL, C_WARN, AL_CENTRE);
   drawText(s.pVal, CX, yV, cV, C_WARN, AL_CENTRE);
-  drawText(s.pUnit, CX, yU, cU, cN, AL_CENTRE);
+  drawText(s.pUnit, CX, yU, cU, C_WARN, AL_CENTRE);
   drawText("TAP TO DISMISS", CX, tapY, cT, C_LIT, AL_CENTRE);
   if (s.pN > 1) {
     const int dw = 14, gap = 10;
