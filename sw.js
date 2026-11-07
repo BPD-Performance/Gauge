@@ -1,7 +1,7 @@
 // Keeps the app working with no internet (e.g. at the track). New versions load when online.
 // Map tiles are kept in their own cache ("bpd-tiles") that survives app updates; clear it from
 // the GPS section of the Setup tab.
-const CACHE = "bpd-gauge-v26";
+const CACHE = "bpd-gauge-v27";
 const TILES = "bpd-tiles";
 const FILES = ["./", "index.html", "app.js", "haltech.js", "gauge.js", "demo.js", "logs.js", "track.js", "profile.js", "bpddot.ttf", "logo-flames.png", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "icon-maskable-512.png", "leaflet/leaflet.js", "leaflet/leaflet.css",
@@ -21,7 +21,8 @@ self.addEventListener("fetch", e => {
   if (url.includes("overpass-api.de")) return;               // circuit search: always live
   e.respondWith(fetch(e.request).then(r => {
     const copy = r.clone();
-    caches.open(CACHE).then(c => c.put(e.request, copy));
+    if (url.startsWith("http://") || url.startsWith("https://"))   // browser extensions cannot be cached
+      caches.open(CACHE).then(c => c.put(e.request, copy)).catch(() => {});
     return r;
   }).catch(() => caches.match(e.request, { ignoreSearch: true })));
 });
