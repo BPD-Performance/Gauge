@@ -378,6 +378,7 @@ const Prof = (() => {
     const p = active() || create("My car", S);
     p.fitted = Object.assign(clone(p.fitted || ALL), { [k]: !!v }); persist();
     if (k === "gps" && S && S.on) S.on[PG.lap] = v ? 1 : 0;
+    if (k === "gps" && p.settings && p.settings.on) { p.settings.on[PG.lap] = v ? 1 : 0; persist(); }   // keep the saved copy in step, so connecting does not ask about it
     if (typeof rebuildNav === "function") rebuildNav();
     if (typeof renderPages === "function") renderPages();
     renderDevice();
