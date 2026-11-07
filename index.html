@@ -240,7 +240,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <section id="tab-logs" hidden>
  <h2>Recording</h2>
- <p class="lead">Logs are recorded on the gauge's SD card, not on your phone. <b>Start log</b> begins or ends one by hand. The gauge can also start and stop by itself (when the engine runs or the car moves) and keeps a few seconds from before the trigger: set that under Logging settings.</p>
+ <p class="lead">Logs are recorded on the gauge's SD card, not on your device. <b>Start log</b> begins or ends one by hand. The gauge can also start and stop by itself (when the engine runs or the car moves) and keeps a few seconds from before the trigger: set that under Logging settings.</p>
  <div class="card"><div class="switch"><p style="margin:0" id="recState"></p><button class="btn pink" id="recBtn" type="button">Start log</button></div></div>
  <details class="sec" id="logSetSec"><summary><span>Logging settings</span><span class="pm" aria-hidden="true"></span></summary><div class="secbody"><div id="logSettings"><div class="empty">Connect to load the logging settings.</div></div></div></details>
  <h2>SD card</h2>
@@ -250,7 +250,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  <p class="lead msg" id="logMsg" role="status"></p>
  <div class="list" id="fileList"></div>
  <h2>On this device</h2>
- <p class="lead">Logs already downloaded to this phone. They stay here and open without the gauge connected.</p>
+ <p class="lead">Logs already downloaded to this device. They stay here and open without the gauge connected.</p>
  <div class="list" id="localList"></div>
  <div id="viewer" hidden>
   <h2 id="logTitle">Log</h2>
@@ -283,7 +283,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <section id="tab-settings" hidden>
  <div class="card" id="profBar"></div>
- <p class="lead">Every gauge setting lives here. They are saved on this phone for each car, so you can look at and change them even when the gauge isn't connected; changes are sent to the gauge next time you connect (it asks first if they differ).</p>
+ <p class="lead">Every gauge setting lives here. They are saved on this device for each car, so you can look at and change them even when the gauge isn't connected; changes are sent to the gauge next time you connect (it asks first if they differ).</p>
  <div class="actions"><button class="btn" id="wizBtn" type="button">Setup wizard</button><button class="btn ghost" id="custBtn" type="button">Customise tabs</button></div>
  <p class="lead"><b>Setup wizard</b> asks a few questions (what's fitted, GPS check, units) and switches on the right pages and warnings. Run it again any time. <b>Customise tabs</b> chooses which optional tabs (CAN keypad, Lap timer) show in the bar at the bottom.</p>
  <div id="settingsBody"><div class="empty">Connect to the gauge to load its settings.</div></div>
@@ -292,7 +292,7 @@ details.sec[open]>summary .pm::before{content:"-"}
 
 <section id="tab-device" hidden>
  <h2>Gauge</h2>
- <p class="lead">Which gauge you're connected to. <b>Disconnect</b> closes the Bluetooth link (the app won't reconnect until you tap Connect). <b>Reset gauge settings</b> puts every setting on the gauge back to its defaults; this phone's saved copy then follows what the gauge now has.</p>
+ <p class="lead">Which gauge you're connected to. <b>Disconnect</b> closes the Bluetooth link (the app won't reconnect until you tap Connect). <b>Reset gauge settings</b> puts every setting on the gauge back to its defaults; this device's saved copy then follows what the gauge now has.</p>
  <div class="card" id="devInfo">Not connected.</div>
  <div class="actions">
   <button class="btn ghost" id="forgetBtn" type="button">Disconnect</button>
@@ -312,7 +312,7 @@ details.sec[open]>summary .pm::before{content:"-"}
  <div class="card">
   <div class="grid"><div><label for="faceSize">Gauge size</label><select id="faceSize"><option value="small">Small (most gauges)</option><option value="medium">Medium</option><option value="large">Large (easiest to read)</option></select></div>
    <div><label for="faceStyle">Display style</label><select id="faceStyle"><option value="dot">Dot matrix</option><option value="clear">Clear (no dots, black)</option></select></div></div>
-  <div class="lead" style="margin:8px 0 0">Saved separately on each phone, laptop or head unit. Clear is easier to read on small screens and in sunlight. Small gauges automatically hide the dial numbers and bottom rows so the main reading stays readable.</div>
+  <div class="lead" style="margin:8px 0 0">Saved separately on each device, laptop or head unit. Clear is easier to read on small screens and in sunlight. Small gauges automatically hide the dial numbers and bottom rows so the main reading stays readable.</div>
  </div>
  <h2>Connecting</h2>
  <div class="card">

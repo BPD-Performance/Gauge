@@ -9,7 +9,7 @@ const $ = id => document.getElementById(id);
 const enc = new TextEncoder(), dec = new TextDecoder();
 
 let dev = null, rxC = null, connected = false, userDisconnect = false, retryMs = 2000;
-let S = null;                                   // gauge settings (the saved copy from this phone while not connected)
+let S = null;                                   // gauge settings (the saved copy from this device while not connected)
 let gaugeInfo = null;
 const frames = {};                              // latest CAN data by ID: {data, t}
 const gaugeStatus = { kmh: null, gear: null, held: 0, sim: 0, warn: 0, dyno: 0, log: 0, t: 0 };
@@ -392,7 +392,7 @@ async function loadSettings(adopt) {
   const r = await cmd({ cmd: "get" });
   if (r.ok) {
     S = r.settings;
-    await Prof.onConnect(gaugeInfo, S, !!adopt);        // compares with this phone's saved copy; asks only when they differ
+    await Prof.onConnect(gaugeInfo, S, !!adopt);        // compares with this device's saved copy; asks only when they differ
     rebuildNav(); renderSettings(); buildFaces(); Prof.renderBar(); Prof.renderDevice();
   }
   await Logs.refresh().catch(() => {});
@@ -449,7 +449,7 @@ function renderSettings() {
   <h2>Units</h2><p class="lead">How pressure, temperature and speed are shown. Air-fuel mixture is always shown as lambda (1.00 is the ideal mix; lower is richer, higher is leaner), so there is no stoich setting to get wrong.</p>
   <div class="grid">${sel("pu", "Pressure", PU)}${sel("tu", "Temperature", TU)}${sel("su", "Speed", SU)}</div>
   <h2>Warnings</h2><p class="lead">Each warning can be switched on or off and has its own limit. Oil, fuel and coolant pressure warnings only make sense if that sensor is fitted. The shift light sets the RPM where the ring flashes.</p><div id="warnBox"></div>
-  <div class="keep"><p class="lead"><b>Save to gauge</b> sends these settings to the gauge (or keeps them on this phone if it isn't connected). <b>Reload from gauge</b> throws away unsaved edits and shows what the gauge has now.</p><div class="actions"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div></div>
+  <div class="keep"><p class="lead"><b>Save to gauge</b> sends these settings to the gauge (or keeps them on this device if it isn't connected). <b>Reload from gauge</b> throws away unsaved edits and shows what the gauge has now.</p><div class="actions"><button class="btn pink" id="saveBtn" type="button">Save to gauge</button><button class="btn ghost" id="reloadBtn" type="button">Reload from gauge</button></div></div>
 `;
   // Face popup and shift light (older gauge firmware doesn't send these, so default them)
   $("face_popup").checked = S.face_popup === undefined ? true : !!S.face_popup;
@@ -508,9 +508,9 @@ function readForm() {
 async function saveSettings() {
   readForm();
   S.pu = +$("pu").value; S.tu = +$("tu").value; S.su = +$("su").value;
-  if (!connected) {                              // away from the gauge: keep it on this phone, ask to send next time
+  if (!connected) {                              // away from the gauge: keep it on this device, ask to send next time
     Prof.saveLocal(); Prof.renderBar();
-    $("msg").textContent = "Saved on this phone. It will ask to send these to the gauge next time you connect.";
+    $("msg").textContent = "Saved on this device. It will ask to send these to the gauge next time you connect.";
     return;
   }
   $("msg").textContent = "Saving…";
@@ -758,7 +758,7 @@ $("rate").onchange = () => subscribe().catch(() => {});
 
 $("wizBtn").onclick = () => Prof.wizard();
 $("custBtn").onclick = () => Prof.customise();
-{ const c = Prof.cached(); if (c) { S = c; try { renderSettings(); } catch {} } }       // Setup works without the gauge, from the copy saved on this phone
+{ const c = Prof.cached(); if (c) { S = c; try { renderSettings(); } catch {} } }       // Setup works without the gauge, from the copy saved on this device
 rebuildNav(); Prof.renderBar(); Prof.renderDevice();
 buildPinned();
 buildChannelList();

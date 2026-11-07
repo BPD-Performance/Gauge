@@ -219,7 +219,7 @@ const Track = (() => {
     document.querySelectorAll("[data-ledit]").forEach(b => b.onclick = () => { openTrack(+b.dataset.ledit); $t("trkName").scrollIntoView({ behavior: "smooth", block: "center" }); });
     document.querySelectorAll("[data-lexp]").forEach(b => b.onclick = () => { const t = lib[+b.dataset.lexp]; download(safe(t.name) + ".bpdtrack.json", JSON.stringify(t)); });
     document.querySelectorAll("[data-lsend]").forEach(b => b.onclick = () => send(lib[+b.dataset.lsend]));
-    document.querySelectorAll("[data-ldel]").forEach(b => b.onclick = () => { if (confirm("Delete this track from the phone?")) { const i = +b.dataset.ldel; lib.splice(i, 1); if (editIdx === i) editIdx = -1; else if (editIdx > i) editIdx--; saveLib(); renderLib(); } });
+    document.querySelectorAll("[data-ldel]").forEach(b => b.onclick = () => { if (confirm("Delete this track from this device?")) { const i = +b.dataset.ldel; lib.splice(i, 1); if (editIdx === i) editIdx = -1; else if (editIdx > i) editIdx--; saveLib(); renderLib(); } });
   }
 
   async function send(t) {

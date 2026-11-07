@@ -1,7 +1,7 @@
 "use strict";
 // Car profiles: what is fitted, the gauge settings, and who last had them.
 // A profile is keyed by its own id (not the Bluetooth id), so a gauge can move between phones and cars.
-// Kept on this phone; the gauge only remembers which profile id is on it. The Bluetooth PIN is never part of a profile.
+// Kept on this device; the gauge only remembers which profile id is on it. The Bluetooth PIN is never part of a profile.
 
 const Prof = (() => {
   const KEY = "bpdProfiles", ACT = "bpdActive";
@@ -9,7 +9,7 @@ const Prof = (() => {
   const FEATURES = [
     { k: "keypad", label: "CAN keypad", help: "Haltech CAN keypad buttons from the gauge. Adds the keypad tab and gauge page." },
     { k: "gps", label: "GPS module (lap timer)", help: "Adds the lap timer tab and gauge page. The next step checks the module is working." }];
-  const ALL = Object.fromEntries(FEATURES.map(f => [f.k, true]));
+  const ALL = { ...Object.fromEntries(FEATURES.map(f => [f.k, true])), gps: false };   // lap timer off by default: turn on in Settings if the car has GPS
   const PG = { boost: 0, oil: 1, afr: 2, tach: 3, coolant: 4, fuel: 5, iat: 6, monitor: 7, keypad: 8, alerts: 9, lap: 10, face: 11 };
 
   let profiles = {}, activeId = null, lastInfo = null;
@@ -119,7 +119,7 @@ const Prof = (() => {
       p.lastConnected = Date.now(); persist();
       return;
     }
-    if (!p) {                                    // gauge names a profile this phone hasn't seen (another phone, or a transfer)
+    if (!p) {                                    // gauge names a profile this device hasn't seen (another phone, or a transfer)
       p = create(lastInfo.pname || "My car", gS, { id: gid, done: lastInfo.setup === 2 || legacy, fitted: fittedFromSettings(gS), gaugeName: gname });
       p.lastConnected = Date.now(); persist();
       return;
@@ -131,15 +131,15 @@ const Prof = (() => {
       const first = d.slice(0, 3).map(k => LABELS[k] || k).join(", ") + (d.length > 3 ? ` and ${d.length - 3} more` : "");
       let c;
       for (;;) {
-        c = await choose(p.pending ? "You changed settings on this phone" : "The gauge's settings are different",
-          `${d.length} setting${d.length > 1 ? "s" : ""} differ between this phone's copy of <b>${esc(p.name)}</b> and the gauge (${esc(first)}).`,
-          [{ label: "Use the gauge's settings", sub: "Update this phone to match the gauge", value: "gauge" },
-           { label: "Send this phone's settings", sub: "Update the gauge to match this phone", value: "phone" },
+        c = await choose(p.pending ? "You changed settings on this device" : "The gauge's settings are different",
+          `${d.length} setting${d.length > 1 ? "s" : ""} differ between this device's copy of <b>${esc(p.name)}</b> and the gauge (${esc(first)}).`,
+          [{ label: "Use the gauge's settings", sub: "Update this device to match the gauge", value: "gauge" },
+           { label: "Send this device's settings", sub: "Update the gauge to match this device", value: "phone" },
            { label: "Review the differences", ghost: true, value: "review" },
            { label: "Decide later", ghost: true, value: "later" }]);
         if (c !== "review") break;
         await modal((box, close) => {
-          box.innerHTML = `<h3>Differences</h3><table class="diff"><tr><th>Setting</th><th>This phone</th><th>Gauge</th></tr>${d.map(k =>
+          box.innerHTML = `<h3>Differences</h3><table class="diff"><tr><th>Setting</th><th>This device</th><th>Gauge</th></tr>${d.map(k =>
             `<tr><td>${esc(LABELS[k] || k)}</td><td>${esc(show(p.settings[k]))}</td><td>${esc(show(gS[k]))}</td></tr>`).join("")}</table>
             <div class="actions"><button class="btn" id="back" type="button">Back</button></div>`;
           box.querySelector("#back").onclick = () => close();
@@ -165,7 +165,7 @@ const Prof = (() => {
     }
     w.skipGear = false;
     const steps = [
-      { t: "Name this car", body: () => `<p class="lead">Each car gets its own profile, so the gauge can move between cars and phones.</p><label for="wn">Profile name</label><input id="wn" maxlength="24" value="${esc(w.name)}">`,
+      { t: "Name this car", body: () => `<p class="lead">Each car gets its own profile, so the gauge can move between cars and devices.</p><label for="wn">Profile name</label><input id="wn" maxlength="24" value="${esc(w.name)}">`,
         read: b => { w.name = cleanName(b.querySelector("#wn").value) || "My car"; } },
       { t: "What's fitted?", body: () => `<p class="lead">Tick what your car has. Anything unticked is hidden and its warnings are switched off, so you never see zero readings from sensors that aren't there.</p>` +
           FEATURES.map(f => `<div class="lrow"><label class="ck2"><input type="checkbox" data-f="${f.k}" ${w.f[f.k] ? "checked" : ""}> ${f.label}</label></div><div class="lead" style="margin:0 0 8px 34px">${f.help}</div>`).join(""),
@@ -197,7 +197,7 @@ const Prof = (() => {
           return `<p class="lead">Profile <b>${esc(w.name)}</b></p><div class="card"><p>Fitted</p>${on.length ? on.map(esc).join("<br>") : "Nothing extra: basic view"}</div>
             ${off.length ? `<div class="card"><p>Not fitted (hidden)</p>${off.map(esc).join("<br>")}</div>` : ""}
             <p class="lead">Add pages like oil, fuel pressure and AFR in Setup, under Gauge pages, if your car has those sensors.</p>
-            <p class="lead">${connected ? "Finish saves this to the gauge and to this phone." : "Not connected: Finish saves it on this phone and sends it the next time you connect."}</p>`; } }];
+            <p class="lead">${connected ? "Finish saves this to the gauge and to this device." : "Not connected: Finish saves it on this device and sends it the next time you connect."}</p>`; } }];
 
     let i = 0;
     const list = () => steps.filter(s => !s.show || s.show());
@@ -216,7 +216,7 @@ const Prof = (() => {
           leave(s);
           if (i < n - 1) { i++; draw(); return; }
           box.querySelector("#wn2").disabled = true; box.querySelector("#wn2").textContent = "Saving…";
-          try { await finish(w); close(true); } catch (e) { box.querySelector("#wn2").disabled = false; box.querySelector("#wn2").textContent = "Finish"; alert("Could not save to the gauge: " + e.message + ". Your answers are kept on this phone."); await finishLocalOnly(w); close(true); }
+          try { await finish(w); close(true); } catch (e) { box.querySelector("#wn2").disabled = false; box.querySelector("#wn2").textContent = "Finish"; alert("Could not save to the gauge: " + e.message + ". Your answers are kept on this device."); await finishLocalOnly(w); close(true); }
         };
         const b = box.querySelector("#wb"); if (b) b.onclick = () => { if (s.read) s.read(box); leave(s); i--; draw(); };
         const x = box.querySelector("#wx"); if (x) x.onclick = () => { leave(s); close(false); };
@@ -275,7 +275,7 @@ const Prof = (() => {
     return { id: String(o.id).replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24) || newId(), name: cleanName(o.name) || "My car", fitted: Object.assign(clone(ALL), o.fitted), done: !!o.done, settings: o.settings };
   }
   async function addImported(o) {
-    if (profiles[o.id] && !confirm(`Replace the profile "${profiles[o.id].name}" on this phone?`)) return null;
+    if (profiles[o.id] && !confirm(`Replace the profile "${profiles[o.id].name}" on this device?`)) return null;
     profiles[o.id] = Object.assign({ lastConnected: 0, pending: false }, profiles[o.id] || {}, { id: o.id, name: o.name, fitted: o.fitted, done: o.done, settings: o.settings, updated: Date.now(), pending: true });
     persist(); renderDevice();
     return profiles[o.id];
@@ -312,7 +312,7 @@ const Prof = (() => {
       if (!l.ok) throw new Error(l.err || "not supported by this gauge firmware");
       if (!l.sd) throw new Error("no SD card in the gauge");
       if (!l.profiles.length) { alert("No profiles are saved on the gauge's SD card yet."); return; }
-      const id = await choose("Restore from SD card", "Pick a profile to copy to this phone.", [...l.profiles.map(x => ({ label: x, value: x })), { label: "Cancel", ghost: true, value: null }]);
+      const id = await choose("Restore from SD card", "Pick a profile to copy to this device.", [...l.profiles.map(x => ({ label: x, value: x })), { label: "Cancel", ghost: true, value: null }]);
       if (!id) return;
       const parts = []; let o = 0;
       for (;;) {
@@ -342,9 +342,9 @@ const Prof = (() => {
     const el = document.getElementById("profBar"); if (!el) return;
     const p = active();
     const st = lastInfo && connected ? (lastInfo.setup === 2 ? "Configured" : lastInfo.setup === 1 ? "Basic view (not set up)" : lastInfo.setup === 0 ? "Not set up" : "") : "";
-    if (!p) { el.innerHTML = `<p>No gauge saved on this phone yet</p><div class="lead msg" style="margin:0">Connect to your gauge, or run the Setup wizard.</div>`; return; }
+    if (!p) { el.innerHTML = `<p>No gauge saved on this device yet</p><div class="lead msg" style="margin:0">Connect to your gauge, or run the Setup wizard.</div>`; return; }
     el.innerHTML = `<p>${esc(p.name)}${st ? ` <span class="chip">${esc(st)}</span>` : ""}</p>
-      <div class="lead msg" style="margin:0">${connected ? "Connected." : "Not connected. Showing the settings saved on this phone."} Last connected ${esc(when(connected ? Date.now() : p.lastConnected))}.
+      <div class="lead msg" style="margin:0">${connected ? "Connected." : "Not connected. Showing the settings saved on this device."} Last connected ${esc(when(connected ? Date.now() : p.lastConnected))}.
       ${p.pending ? "<br>You have changes that will be sent to the gauge next time you connect." : ""}${!p.done ? "<br>This profile hasn't been through the setup wizard yet." : ""}</div>`;
   }
   const SPD_NAMES = ["Use ECU speed as is", "Gearbox or rear wheels", "Front wheels", "Gauge GPS"];
@@ -386,14 +386,14 @@ const Prof = (() => {
       <h2>Saved in ${esc(active() ? active().name : "this profile")}</h2>${savedList(active())}
       <div class="actions"><button class="btn ghost" id="pNew" type="button">Save as new</button><button class="btn ghost" id="pRen" type="button" ${active() ? "" : "disabled"}>Rename</button>
         <button class="btn ghost red" id="pDel" type="button" ${active() ? "" : "disabled"}>Delete</button></div>
-      <div class="actions"><button class="btn ghost" id="pExp" type="button" ${active() ? "" : "disabled"}>Save to phone file</button><button class="btn ghost" id="pImp" type="button">Open from file</button></div>
+      <div class="actions"><button class="btn ghost" id="pExp" type="button" ${active() ? "" : "disabled"}>Save to file</button><button class="btn ghost" id="pImp" type="button">Open from file</button></div>
       <div class="actions"><button class="btn ghost" id="pSd" type="button">Back up to gauge SD</button><button class="btn ghost" id="pRes" type="button">Restore from SD</button></div>
       <p class="lead msg" id="pMsg" role="status"></p>`;
     const msg = t => { const m = document.getElementById("pMsg"); if (m) m.textContent = t; };
     el.querySelectorAll("[data-load]").forEach(b => b.onclick = () => loadProfile(b.dataset.load));
     el.querySelector("#pNew").onclick = async () => { if (!S) { msg("Connect to the gauge first, so there is something to save."); return; } const n = await askName("Save as a new profile", "New car"); if (n) { create(n, S, { done: active() ? active().done : false, fitted: clone(fitted()) }); afterChange(); } };
     el.querySelector("#pRen").onclick = async () => { const p = active(); const n = p && await askName("Rename profile", p.name); if (n) { p.name = n; persist(); if (connected) cmd({ cmd: "setupset", pid: p.id, pname: p.name }).catch(() => {}); afterChange(); } };
-    el.querySelector("#pDel").onclick = () => { const p = active(); if (p && confirm(`Delete the profile "${p.name}" from this phone? The gauge keeps its settings.`)) { delete profiles[p.id]; activeId = null; persist(); afterChange(); } };
+    el.querySelector("#pDel").onclick = () => { const p = active(); if (p && confirm(`Delete the profile "${p.name}" from this device? The gauge keeps its settings.`)) { delete profiles[p.id]; activeId = null; persist(); afterChange(); } };
     el.querySelector("#pExp").onclick = exportFile;
     el.querySelector("#pImp").onclick = importFile;
     el.querySelector("#pSd").onclick = () => { msg("Backing up…"); backupSd().then(() => msg("Backed up to the gauge's SD card."), e => msg("Backup failed: " + e.message)); };
