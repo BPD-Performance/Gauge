@@ -1,3 +1,8 @@
+# Stale cache fix (branch fix/stale-cache, cache v30)
+- After an update the phone could run a mix of old and new files (old index.html with new app.js), which crashed the page: Add/Edit missing, Device still showing the removed "Gauge size". Reproduced by running the old page with the new script.
+- Likely cause: the service worker fetched files through the browser's 10-minute cache. Install now uses cache:"reload" and every page load uses cache:"no-cache" (still works offline from the saved copy).
+- Needs two reloads on a phone that is already stuck: the first installs the new worker, the second runs it.
+
 # Resume fix (branch fix/resume-redraw, cache v29)
 - Gauge could stay blank, or the Add/Edit bar could be missing, until the app was minimised and reopened. Faces skip redrawing when nothing changed, so a canvas the phone had blanked was never repainted, and the size could be measured too early.
 - Now on load, resume, focus, rotation: the faces are repainted and re-measured (again 300 ms later). Cause is my best reading of the code, not confirmed on a phone.
