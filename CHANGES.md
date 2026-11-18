@@ -1,3 +1,10 @@
+# Gauge screens (test branch feature/gauge-screens, cache v28)
+- Removed the Device > "Gauge size" setting. Gauges are always the largest that fit the screen.
+- Fixed smallest gauge: 160 px. Add gauge is never greyed out: when one more would be too small it starts a new screen and jumps to it.
+- Screens are cycled with dots under the buttons (tap a dot). Edit adds "+ Screen" and "Remove screen" (asks first; the last screen cannot be removed). The per-gauge page dropdown space is still reserved.
+- Saved layout moves from gaugeTiles to gaugeScreens. An old single list becomes screen 1 and is split onto extra screens if too many for this device.
+- Tested in headless Chrome at 412x800 (add, overflow, delete, reload, migration). NOT tested on a real phone or head unit, or with rotation.
+
 # App changes (2026-11-04, BPD Embers drop)
 
 ## Third pass: names and avatar

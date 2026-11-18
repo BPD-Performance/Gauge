@@ -557,12 +557,21 @@ $("defaultsBtn").onclick = async () => {
 // that makes the faces as big as possible, and stops adding once faces would get smaller
 // than MIN_FACE (still readable).
 const FACE_GAP = 12, MAX_FACE = 900, BAR_H = 56;   // BAR_H = edit bar height (50px) + its top margin (6px)
-const SIZE_MIN = { small: 160, medium: 240, large: 330 };      // smallest face for each size setting (screen px)
+const MIN_FACE = 160;                                            // smallest face we allow (screen px); one more gauge than fit starts a new screen
 const SIMPLE_BELOW = 270;                                        // faces smaller than this drop the fine detail
-const minFace = () => SIZE_MIN[localStorage.getItem("faceSize") || "small"] || 160;
+const minFace = () => MIN_FACE;
 const faceOpts = size => ({ clear: localStorage.getItem("faceStyle") === "clear", simple: size < SIMPLE_BELOW });
 let gaugeTab = true, editMode = false, faceSizePx = 300;
-let tiles = JSON.parse(localStorage.getItem("gaugeTiles") || "null") || [0];
+// A "screen" is a group of gauges that share the display. Each gauge on it shows one gauge page (Boost, IAT ...).
+// Saved as an array of screens. An older flat list (gaugeTiles) becomes screen 1, split later if too many fit.
+let screens = JSON.parse(localStorage.getItem("gaugeScreens") || "null"), needSplit = false;
+if (!Array.isArray(screens) || !screens.length || !screens.every(s => Array.isArray(s) && s.length)) {
+  const old = JSON.parse(localStorage.getItem("gaugeTiles") || "null");
+  screens = [Array.isArray(old) && old.length ? old : [0]];
+  needSplit = screens[0].length > 1;
+}
+let curScreen = Math.min(+localStorage.getItem("gaugeScreenNo") || 0, screens.length - 1);
+let tiles = screens[curScreen];
 const tileEls = [];
 
 const allowedPages = () => {
@@ -570,7 +579,16 @@ const allowedPages = () => {
   const list = S.order.filter(p => p < PAGES.length && S.on[p]);
   return list.length ? list : [0];
 };
-const saveTiles = () => localStorage.setItem("gaugeTiles", JSON.stringify(tiles));
+const saveTiles = () => {
+  localStorage.setItem("gaugeScreens", JSON.stringify(screens));
+  localStorage.setItem("gaugeScreenNo", String(curScreen));
+};
+function goScreen(n) {
+  curScreen = Math.max(0, Math.min(screens.length - 1, n));
+  tiles = screens[curScreen];
+  saveTiles(); buildFaces();
+}
+const nextPage = () => { const allowed = allowedPages(), used = new Set(tiles); return allowed.find(p => !used.has(p)) ?? allowed[0]; };
 
 // The Gauge tab is locked to the screen: it fills the space between the header and the tab bar
 // and never scrolls. The faces are centred in it, so the space above and below is equal.
@@ -608,8 +626,34 @@ function layoutFaces() {
   faceSizePx = size;
   $("faces").style.gridTemplateColumns = `repeat(${fit.cols}, ${size}px)`;
   tileEls.forEach(t => t.wrap.style.width = size + "px");
-  $("gCap").textContent = `${tiles.length} of ${cap} fit`;
-  $("gAdd").disabled = tiles.length >= cap;
+  // First run after upgrading from the old single list: move gauges that no longer fit onto extra screens
+  if (needSplit && $("faces").clientWidth > 0) {
+    needSplit = false;
+    if (screens.length === 1 && tiles.length > cap) {
+      const all = screens[0]; screens = [];
+      for (let i = 0; i < all.length; i += cap) screens.push(all.slice(i, i + cap));
+      curScreen = 0; tiles = screens[0]; saveTiles(); buildFaces(); return;
+    }
+  }
+  drawScreenBar();
+}
+
+// Dots (one per screen) and the Edit-only screen buttons
+function drawScreenBar() {
+  const n = screens.length, box = $("gDots");
+  box.hidden = n < 2;
+  box.innerHTML = "";
+  screens.forEach((_, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "dot" + (i === curScreen ? " on" : "");
+    b.setAttribute("aria-label", `Screen ${i + 1} of ${n}`);
+    b.setAttribute("aria-current", i === curScreen ? "true" : "false");
+    b.onclick = () => goScreen(i);
+    box.appendChild(b);
+  });
+  $("gCap").textContent = n > 1 ? `Screen ${curScreen + 1} of ${n}` : "";
+  $("gAddScreen").hidden = $("gDelScreen").hidden = !editMode;
+  $("gDelScreen").disabled = n < 2;
 }
 
 // Refit whenever the space for the faces changes: the Edit toolbar, the demo banner, rotation
@@ -617,7 +661,8 @@ if (window.ResizeObserver) new ResizeObserver(() => layoutFaces()).observe($("fa
 
 function buildFaces() {
   const allowed = allowedPages();
-  tiles = tiles.map(t => allowed.includes(t) ? t : allowed[0]);
+  screens = screens.map(s => s.map(t => allowed.includes(t) ? t : allowed[0]));
+  tiles = screens[curScreen];
   $("faces").innerHTML = "";
   tileEls.length = 0;
   tiles.forEach((type, i) => {
@@ -633,7 +678,7 @@ function buildFaces() {
     ed.innerHTML = `<select aria-label="Page for gauge ${i + 1}">${allowed.map(p => `<option value="${p}" ${p === type ? "selected" : ""}>${PAGES[p]}</option>`).join("")}</select>
       <button class="btn ghost" type="button" aria-label="Remove gauge ${i + 1}">X</button>`;
     ed.querySelector("select").onchange = e => { tiles[i] = +e.target.value; saveTiles(); };
-    ed.querySelector("button").onclick = () => { if (tiles.length > 1) { tiles.splice(i, 1); saveTiles(); buildFaces(); } };
+    ed.querySelector("button").onclick = () => { if (tiles.length > 1) { tiles.splice(i, 1); saveTiles(); buildFaces(); } };   // use "Remove screen" to drop the last gauge of a screen
     wrap.appendChild(ed);
     $("faces").appendChild(wrap);
     const el = { wrap, cv, ctx: cv.getContext("2d") };
@@ -667,10 +712,19 @@ function attachFaceInput(cv, i) {                 // swipe = change page, tap = 
   cv.onpointerleave = cv.onpointercancel = () => clearTimeout(holdTimer);
 }
 
+// Add gauge is never greyed out: if this screen is full, the new gauge starts a new screen
 $("gAdd").onclick = () => {
-  const allowed = allowedPages(), used = new Set(tiles);
-  tiles.push(allowed.find(p => !used.has(p)) ?? allowed[0]);   // next page not already shown
+  const sp = gridSpace();
+  if (tiles.length >= capacity(sp)) { screens.splice(curScreen + 1, 0, [nextPage()]); goScreen(curScreen + 1); return; }
+  tiles.push(nextPage());
   saveTiles(); buildFaces();
+};
+$("gAddScreen").onclick = () => { screens.splice(curScreen + 1, 0, [nextPage()]); goScreen(curScreen + 1); };
+$("gDelScreen").onclick = () => {
+  if (screens.length < 2) return;
+  if (!confirm(`Remove screen ${curScreen + 1} and its ${tiles.length} gauge${tiles.length > 1 ? "s" : ""}?`)) return;
+  screens.splice(curScreen, 1);
+  goScreen(Math.min(curScreen, screens.length - 1));
 };
 $("gEdit").onclick = () => { editMode = !editMode; $("gEdit").textContent = editMode ? "Done" : "Edit"; buildFaces(); showChrome(); };
 $("gFull").onclick = () => {
@@ -810,10 +864,8 @@ renderDiag();
 buildFaces();
 Logs.init();
 
-// Per-device Gauge tab size and style
-$("faceSize").value = localStorage.getItem("faceSize") || "small";
+// Per-device Gauge tab style
 $("faceStyle").value = localStorage.getItem("faceStyle") || "dot";
-$("faceSize").onchange = () => { localStorage.setItem("faceSize", $("faceSize").value); layoutFaces(); };
 $("faceStyle").onchange = () => { localStorage.setItem("faceStyle", $("faceStyle").value); tileEls.forEach(t => t.sig = ""); };
 document.body.classList.add("gaugeMode");
 setTimeout(layoutFaces, 50);

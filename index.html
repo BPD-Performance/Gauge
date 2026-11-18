@@ -117,9 +117,13 @@ pre{background:#000;color:var(--amber);border:2px solid var(--line);padding:10px
 body.gaugeMode{overflow:hidden;overscroll-behavior:none}
 body.gaugeMode main{padding-bottom:0}
 #tab-gauge{display:flex;flex-direction:column;overflow:hidden}
-#tab-gauge.chromeHidden>.gbar,#tab-gauge.chromeHidden>.srcTag,#tab-gauge.chromeHidden>.lead{display:none}
+#tab-gauge.chromeHidden>.gbar,#tab-gauge.chromeHidden>.dots,#tab-gauge.chromeHidden>.srcTag,#tab-gauge.chromeHidden>.lead{display:none}
 #tab-gauge[hidden]{display:none}
 .gbar .btn{min-height:38px;font-size:13px;padding:0 12px}
+.dots{display:flex;justify-content:center;gap:2px;margin:0 0 4px}.dots[hidden]{display:none}
+.dots .dot{width:32px;height:28px;min-height:0;padding:0;border:0;background:none;position:relative}
+.dots .dot::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border:2px solid var(--amber);border-radius:50%}
+.dots .dot.on::after{background:var(--amber)}
 #gCap{font:12px var(--dot);color:var(--amber2);margin-left:auto}
 .faces{display:grid;gap:12px;justify-content:center;align-content:center;flex:1;min-height:0;overflow:auto}
 .ft{position:relative}
@@ -191,10 +195,13 @@ details.sec[open]>summary .pm::before{content:"-"}
   <button class="btn" id="gAdd" type="button">+ Add gauge</button>
   <button class="btn ghost" id="gEdit" type="button">Edit</button>
   <button class="btn ghost" id="gFull" type="button">Full screen</button>
+  <button class="btn ghost" id="gAddScreen" type="button" hidden>+ Screen</button>
+  <button class="btn ghost" id="gDelScreen" type="button" hidden>Remove screen</button>
   <span id="gCap"></span>
  </div>
+ <div id="gDots" class="dots" role="group" aria-label="Gauge screens" hidden></div>
  <div id="srcBanner" class="srcTag" hidden></div>
- <p class="lead">Add as many gauges as fit this screen; how big they are and the display style are set per device in the Device tab. Swipe a gauge to change its page, or use Edit. On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
+ <p class="lead">Gauges fill the screen as big as they can. When one more would be too small, Add gauge starts a new screen: tap the dots to move between screens. Swipe a gauge to change its page, or use Edit (where you can also add or remove screens). On the keypad page, tap the buttons to use them. Hold 2 seconds on boost or IAT to reset the peak.</p>
  <div class="faces" id="faces"></div>
 </section>
 
@@ -311,9 +318,8 @@ details.sec[open]>summary .pm::before{content:"-"}
  </div>
  <h2>Gauge look</h2>
  <div class="card">
-  <div class="grid"><div><label for="faceSize">Gauge size</label><select id="faceSize"><option value="small">Small (most gauges)</option><option value="medium">Medium</option><option value="large">Large (easiest to read)</option></select></div>
-   <div><label for="faceStyle">Display style</label><select id="faceStyle"><option value="dot">Dot matrix</option><option value="clear">Clear (no dots, black)</option></select></div></div>
-  <div class="lead" style="margin:8px 0 0">Saved separately on each device, laptop or head unit. Clear is easier to read on small screens and in sunlight. Small gauges automatically hide the dial numbers and bottom rows so the main reading stays readable.</div>
+  <div class="grid"><div><label for="faceStyle">Display style</label><select id="faceStyle"><option value="dot">Dot matrix</option><option value="clear">Clear (no dots, black)</option></select></div></div>
+  <div class="lead" style="margin:8px 0 0">Saved separately on each device, laptop or head unit. Clear is easier to read on small screens and in sunlight. Gauges are always as big as the screen allows. Smaller ones automatically hide the dial numbers and bottom rows so the main reading stays readable.</div>
  </div>
  <h2>Connecting</h2>
  <div class="card">
