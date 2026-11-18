@@ -757,6 +757,22 @@ document.addEventListener("fullscreenchange", () => {
 });
 window.addEventListener("resize", () => layoutFaces());
 
+// Phones can blank a canvas (or report a wrong size) while the app is minimised or still starting.
+// Each face skips redrawing when "nothing changed", so after any resume we clear that memory,
+// re-measure, and measure again a moment later when the browser has settled.
+function refreshFaces() {
+  tileEls.forEach(t => { t.sig = ""; });
+  showChrome();
+  layoutFaces();
+  requestAnimationFrame(layoutFaces);
+  setTimeout(() => { tileEls.forEach(t => { t.sig = ""; }); layoutFaces(); }, 300);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshFaces(); });
+window.addEventListener("pageshow", refreshFaces);
+window.addEventListener("focus", refreshFaces);
+window.addEventListener("orientationchange", () => setTimeout(refreshFaces, 200));
+window.addEventListener("load", refreshFaces);
+
 let lastFace = 0;
 function faceLoop(t) {
   const period = tileEls.length > 4 ? 66 : 45;     // lighter refresh with lots of gauges

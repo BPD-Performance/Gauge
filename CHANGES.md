@@ -1,3 +1,7 @@
+# Resume fix (branch fix/resume-redraw, cache v29)
+- Gauge could stay blank, or the Add/Edit bar could be missing, until the app was minimised and reopened. Faces skip redrawing when nothing changed, so a canvas the phone had blanked was never repainted, and the size could be measured too early.
+- Now on load, resume, focus, rotation: the faces are repainted and re-measured (again 300 ms later). Cause is my best reading of the code, not confirmed on a phone.
+
 # Gauge screens (test branch feature/gauge-screens, cache v28)
 - Removed the Device > "Gauge size" setting. Gauges are always the largest that fit the screen.
 - Fixed smallest gauge: 160 px. Add gauge is never greyed out: when one more would be too small it starts a new screen and jumps to it.
